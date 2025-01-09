@@ -110,7 +110,7 @@ class PhynPlusDevice(PhynDevice):
         """Return the current consumption for today in gallons."""
         if "consumption" not in self._rt_device_state:
             return None
-        return self._rt_device_state["consumption"]["v"]
+        return self._device_state["consumption"]
 
     @property
     def consumption_today(self) -> float:
@@ -266,6 +266,9 @@ class PhynPlusDevice(PhynDevice):
             self._rt_device_state = data
 
             update_data = {}
+            if "consumption" in data:
+                # Round consumption down to 2 decimal points.
+                update_data.update({"consumption": math.floor(data["consumption"]["v"] * 100) / 100})
             if "flow" in data:
                 update_data.update({"flow": data["flow"]})
             if "flow_state" in data:
@@ -399,7 +402,7 @@ class PhynConsumptionSensor(PhynEntity, SensorEntity):
         """Return the current daily usage."""
         if self._device.consumption is None:
             return None
-        return round(self._device.consumption, 1)
+        return self._device.consumption
 
 
 class PhynCurrentFlowRateSensor(PhynEntity, SensorEntity):
