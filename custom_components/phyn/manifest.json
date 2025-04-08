@@ -3,7 +3,7 @@
   "name": "Phyn",
   "codeowners": ["@mizterb","@jordanruthe"],
   "config_flow": true,
-  "documentation": "https://www.home-assistant.io/integrations/phyn",
+  "documentation": "https://github.com/jordanruthe/homeassistant-phyn",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/jordanruthe/homeassistant-phyn/issues",
   "loggers": ["custom_components.phyn","aiophyn"],
