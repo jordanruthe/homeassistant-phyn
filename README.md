@@ -2,12 +2,16 @@
 
 Home Assistant custom component for interfacing with [Phyn](https://www.phyn.com) Smart Water Assistant and Kohler H2Wise+ by Phyn.
 
+The integration's [IoT class is Cloud Push](https://www.home-assistant.io/blog/2016/02/12/classifying-the-internet-of-things/#classifiers), meaning the Home Assistant integration with this device happens via the Phyn cloud service. As such it requires an active internet connection to see updates and make changes,  Home Assistant will however be notified as soon as a new state is available. (so the response time is the same as using the official Phyn app).
+
 This integration currently provides the following capabilities:
 
 - Daily water usage (compatible with Energy dashboard)
 - Average water temperature, pressure, and flow (realtime not available)
 - Shutoff valve control
 - Away mode control
+- Autoshutoff control
+- Scheduled Leak Test activation control
 
 # Installation via HACS
 
