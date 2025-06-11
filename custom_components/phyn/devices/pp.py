@@ -70,6 +70,7 @@ class PhynPlusDevice(PhynDevice):
         self._away_mode: dict[str, Any] = {}
         self._water_usage: dict[str, Any] = {}
         self._last_known_valve_state: bool = True
+        self._latest_health_test: dict[Str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
 
         self.entities = [
@@ -81,7 +82,9 @@ class PhynPlusDevice(PhynDevice):
             PhynConsumptionSensor(self),
             PhynFirmwareUpdateAvailableSensor(self),
             PhynFirwmwareUpdateEntity(self),
+            PhynLeakTestLeakDetected(self),
             PhynLeakTestSensor(self),
+            PhynLeakTestWarning(self),
             PhynScheduledLeakTestEnabledSwitch(self),
             PhynTemperatureSensor(self, "temperature", NAME_WATER_TEMPERATURE),
             PhynPressureSensor(self, "pressure", NAME_WATER_PRESSURE),
@@ -96,6 +99,10 @@ class PhynPlusDevice(PhynDevice):
                 await self._update_autoshutoff()
                 await self._update_device_preferences()
                 await self._update_consumption_data()
+
+                #Update every 10 minutes
+                if self._update_count % 10 == 0:
+                    await self._update_device_health_tests()
 
                 #Update every hour
                 if (self._update_count % 60 == 0):
@@ -260,6 +267,22 @@ class PhynPlusDevice(PhynDevice):
             self._phyn_device_id, duration
         )
         LOGGER.debug("Updated Phyn consumption data: %s", self._water_usage)
+    
+    async def _update_device_health_tests(self, *_) -> None:
+        """Update the latest health test"""
+        try: 
+            data = await self._coordinator.api_client.device.get_health_tests(self._phyn_device_id)
+        except Exception as error:
+            LOGGER.error("Error getting health tests: %s" % error)
+            self._latest_health_test = None
+            return
+        latest_test = None
+        LOGGER.debug("Health data: %s" % data)
+        for test in data['data']:
+            if latest_test == None or latest_test['end_time'] < test['end_time']:
+                latest_test = test
+        
+        self._latest_health_test = latest_test        
 
     async def on_device_update(self, device_id, data):
         if device_id == self._phyn_device_id:
@@ -364,6 +387,34 @@ class PhynLeakTestSensor(PhynEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self._device.leak_test_running
+
+class PhynLeakTestWarning(PhynEntity, BinarySensorEntity):
+    """Leak Test Sensor"""
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, device):
+        """Initialize the leak test warning sensor."""
+        super().__init__("leak_test_warning", "Leak Test Warning", device)
+
+    @property
+    def is_on(self) -> bool:
+        if self._device._latest_health_test == None:
+            return None
+        return self._device._latest_health_test['is_warn'] == True
+
+class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
+    """Leak Test Sensor"""
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, device):
+        """Initialize the leak test leak sensor."""
+        super().__init__("leak_test_leak", "Leak Detected", device)
+
+    @property
+    def is_on(self) -> bool:
+        if self._device._latest_health_test == None:
+            return None
+        return self._device._latest_health_test['is_leak'] == True
 
 class PhynScheduledLeakTestEnabledSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
