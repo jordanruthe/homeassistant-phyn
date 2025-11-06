@@ -77,7 +77,12 @@ class PhynEntity(Entity):
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""
-        self.async_on_remove(self._device.coordinator.async_add_listener(self.async_write_ha_state))
+        try:
+            # Prefer coordinator listener when available
+            self.async_on_remove(self._device.coordinator.async_add_listener(self.async_write_ha_state))
+        except AttributeError:
+            # Fallback for older device structure that exposes async_add_listener directly
+            self.async_on_remove(self._device.async_add_listener(self.async_write_ha_state))
 
 class PhynAlertSensor(PhynEntity, BinarySensorEntity):
     """Alert sensor"""
