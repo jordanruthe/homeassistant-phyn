@@ -50,3 +50,7 @@ _2023.01.00_
 _2023.08.00_
 
 - Added away mode control
+
+## Developer note
+
+The base entity classes have been consolidated into a single canonical location: `custom_components/phyn/entities/base.py`. The legacy `custom_components/phyn/entity.py` file has been completely removed to eliminate duplicate class definitions. If you maintain local forks or external code that imports from the old path, please update imports to use `..entities.base` (for internal package imports) or `custom_components.phyn.entities.base` as appropriate.
