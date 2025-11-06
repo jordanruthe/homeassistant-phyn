@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     PERCENTAGE,
 )
-from async_timeout import timeout
+from asyncio import timeout
 
 from .base import PhynDevice
 from ..entities.base import (

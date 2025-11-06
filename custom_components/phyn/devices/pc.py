@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiophyn.errors import RequestError
-from async_timeout import timeout
+from asyncio import timeout
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,

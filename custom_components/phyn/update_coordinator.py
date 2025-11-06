@@ -6,7 +6,7 @@ from typing import Any
 
 from aiophyn.api import API
 from aiophyn.errors import RequestError
-from async_timeout import timeout
+from asyncio import timeout
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
