@@ -70,7 +70,7 @@ class PhynPlusDevice(PhynDevice):
         self._away_mode: dict[str, Any] = {}
         self._water_usage: dict[str, Any] = {}
         self._last_known_valve_state: bool = True
-        self._latest_health_test: dict[Str, Any] | None = None
+        self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
 
         self.entities = [
