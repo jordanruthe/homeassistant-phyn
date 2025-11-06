@@ -244,7 +244,7 @@ class PhynPlusDevice(PhynDevice):
             "name": key,
             "value": val
         }]
-        await self._coordinator.api_client.set_device_preferences(self._phyn_device_id, params)
+        await self._coordinator.api_client.device.set_device_preferences(self._phyn_device_id, params)
         self._device_preferences[key]["value"] = val
     
     async def _update_autoshutoff(self, *_) -> None:
