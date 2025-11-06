@@ -279,7 +279,7 @@ class PhynPlusDevice(PhynDevice):
         latest_test = None
         LOGGER.debug("Health data: %s" % data)
         for test in data['data']:
-            if latest_test == None or latest_test['end_time'] < test['end_time']:
+            if latest_test is None or latest_test['end_time'] < test['end_time']:
                 latest_test = test
         
         self._latest_health_test = latest_test        
@@ -398,7 +398,7 @@ class PhynLeakTestWarning(PhynEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        if self._device._latest_health_test == None:
+        if self._device._latest_health_test is None:
             return None
         return self._device._latest_health_test['is_warn'] == True
 
@@ -412,7 +412,7 @@ class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        if self._device._latest_health_test == None:
+        if self._device._latest_health_test is None:
             return None
         return self._device._latest_health_test['is_leak'] == True
 
