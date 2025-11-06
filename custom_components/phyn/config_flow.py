@@ -86,7 +86,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PASSWORD: user_input[CONF_PASSWORD]
                     }
                 )
-                return self.async_create_entry(title=info["title"], data=user_input)
+                
             except ClientError as error:
                 if error.response['Error']['Code'] == "NotAuthorizedException":
                     errors["base"] = "invalid_auth"
@@ -115,7 +115,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "Brand": user_input["Brand"]
                     }
                 )
-                return self.async_create_entry(title=info["title"], data=user_input)
+                
             except ClientError as error:
                 if error.response['Error']['Code'] == "NotAuthorizedException":
                     errors["base"] = "invalid_auth"
