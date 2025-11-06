@@ -47,21 +47,22 @@ class PhynWaterSensorDevice(PhynDevice):
         """Return battery percentage"""
         if "battery_level" not in self._water_statistics:
             return None
-        return self._water_statistics["battery_level"]
+        return self._water_statistics.get("battery_level")
 
     @property
     def device_name(self) -> str:
         """Return device name."""
         if "name" not in self._device_state:
             return f"{self.manufacturer} {self.model}"
-        return f"{self.manufacturer} {self.model} - {self._device_state['name']}"
+        return f"{self.manufacturer} {self.model} - {self._device_state.get('name', '')}"
 
     @property
     def high_humidity(self) -> bool | None:
         """High humidity detected"""
         key = "high_humidity"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     @property
@@ -69,22 +70,27 @@ class PhynWaterSensorDevice(PhynDevice):
         """Humidity percentage"""
         if "humidity" not in self._water_statistics:
             return None
-        return self._water_statistics["humidity"][0]["value"]
+        humidity_data = self._water_statistics.get("humidity", [])
+        if humidity_data and len(humidity_data) > 0:
+            return humidity_data[0].get("value")
+        return None
 
     @property
     def low_humidity(self) -> bool | None:
         """Low humidity detected"""
         key = "low_humidity"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     @property
     def low_temperature(self) -> bool | None:
         """Low temperature detected"""
         key = "low_temperature"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     @property
@@ -92,14 +98,18 @@ class PhynWaterSensorDevice(PhynDevice):
         """Current temperature"""
         if "temperature" not in self._water_statistics:
             return None
-        return self._water_statistics["temperature"][0]["value"]
+        temperature_data = self._water_statistics.get("temperature", [])
+        if temperature_data and len(temperature_data) > 0:
+            return temperature_data[0].get("value")
+        return None
 
     @property
     def water_detected(self) -> bool | None:
         """Water detected"""
         key = "water"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     async def async_update_data(self):
@@ -130,7 +140,7 @@ class PhynWaterSensorDevice(PhynDevice):
             if item is None:
                 item = entry
                 continue
-            if entry['ts'] > item['ts']:
+            if entry.get('ts', 0) > item.get('ts', 0):
                 item = entry
 
         if item:

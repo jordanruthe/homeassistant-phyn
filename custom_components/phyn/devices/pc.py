@@ -82,57 +82,63 @@ class PhynClassicDevice(PhynDevice):
     @property
     def cold_line_num(self) -> int | None:
         """Return cold line number"""
-        return self._device_state['cold_line_num']
+        return self._device_state.get('cold_line_num')
 
     @property
     def consumption_today(self) -> float:
         """Return the current consumption for today in gallons."""
-        return self._water_usage["water_consumption"]
+        return self._water_usage.get("water_consumption")
 
     @property
     def current_flow_rate(self) -> float:
         """Return current flow rate in gpm."""
-        if "v" not in self._device_state["flow"]:
+        flow = self._device_state.get("flow", {})
+        if "v" not in flow:
             return None
-        return round(self._device_state["flow"]["v"], 3)
+        return round(flow["v"], 3)
 
     @property
     def current_psi1(self) -> float:
         """Return the current pressure in psi."""
-        if "v" in self._device_state["pressure1"]:
-            return round(self._device_state["pressure1"]["v"], 2)
-        return round(self._device_state["pressure1"]["mean"], 2)
+        pressure1 = self._device_state.get("pressure1", {})
+        if "v" in pressure1:
+            return round(pressure1["v"], 2)
+        return round(pressure1.get("mean", 0), 2)
 
     @property
     def current_psi2(self) -> float:
         """Return the current pressure in psi."""
-        if "v" in self._device_state["pressure2"]:
-            return round(self._device_state["pressure2"]["v"], 2)
-        return round(self._device_state["pressure2"]["mean"], 2)
+        pressure2 = self._device_state.get("pressure2", {})
+        if "v" in pressure2:
+            return round(pressure2["v"], 2)
+        return round(pressure2.get("mean", 0), 2)
 
     @property
     def hot_line_num(self) -> int | None:
         """Return hot line number"""
-        return self._device_state['hot_line_num']
+        return self._device_state.get('hot_line_num')
 
     @property
     def leak_test_running(self) -> bool:
         """Check if a leak test is running"""
-        return self._device_state["sov_status"]["v"] == "LeakExp"
+        sov_status = self._device_state.get("sov_status", {})
+        return sov_status.get("v") == "LeakExp"
 
     @property
     def temperature1(self) -> float:
         """Return the current temperature in degrees F."""
-        if "v" in self._device_state["temperature1"]:
-            return round(self._device_state["temperature1"]["v"], 2)
-        return round(self._device_state["temperature1"]["mean"], 2)
+        temp1 = self._device_state.get("temperature1", {})
+        if "v" in temp1:
+            return round(temp1["v"], 2)
+        return round(temp1.get("mean", 0), 2)
 
     @property
     def temperature2(self) -> float:
         """Return the current temperature in degrees F."""
-        if "v" in self._device_state["temperature2"]:
-            return round(self._device_state["temperature2"]["v"], 2)
-        return round(self._device_state["temperature2"]["mean"], 2)
+        temp2 = self._device_state.get("temperature2", {})
+        if "v" in temp2:
+            return round(temp2["v"], 2)
+        return round(temp2.get("mean", 0), 2)
 
     async def _update_consumption_data(self, *_) -> None:
         """Update water consumption data from the API."""

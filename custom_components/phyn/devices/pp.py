@@ -117,45 +117,50 @@ class PhynPlusDevice(PhynDevice):
         """Return the current consumption for today in gallons."""
         if "consumption" not in self._rt_device_state:
             return None
-        return self._device_state["consumption"]
+        return self._device_state.get("consumption")
 
     @property
     def consumption_today(self) -> float:
         """Return the current consumption for today in gallons."""
-        return self._water_usage["water_consumption"]
+        return self._water_usage.get("water_consumption")
 
     @property
     def current_flow_rate(self) -> float:
         """Return current flow rate in gpm."""
-        if "v" not in self._device_state["flow"]:
+        flow = self._device_state.get("flow", {})
+        if "v" not in flow:
             return None
-        return round(self._device_state["flow"]["v"], 3)
+        return round(flow["v"], 3)
 
     @property
     def current_psi(self) -> float:
         """Return the current pressure in psi."""
-        if "v" in self._device_state["pressure"]:
-            return round(self._device_state["pressure"]["v"], 2)
-        return round(self._device_state["pressure"]["mean"], 2)
+        pressure = self._device_state.get("pressure", {})
+        if "v" in pressure:
+            return round(pressure["v"], 2)
+        return round(pressure.get("mean", 0), 2)
 
     @property
     def leak_test_running(self) -> bool:
         """Check if a leak test is running"""
-        return self._device_state["sov_status"]["v"] == "LeakExp"
+        sov_status = self._device_state.get("sov_status", {})
+        return sov_status.get("v") == "LeakExp"
 
     @property
     def temperature(self) -> float:
         """Return the current temperature in degrees F."""
-        if "v" in self._device_state["temperature"]:
-            return round(self._device_state["temperature"]["v"], 2)
-        return round(self._device_state["temperature"]["mean"], 2)
+        temp = self._device_state.get("temperature", {})
+        if "v" in temp:
+            return round(temp["v"], 2)
+        return round(temp.get("mean", 0), 2)
 
     @property
     def scheduled_leak_test_enabled(self) -> bool:
         """Return if the scheduled leak test is enabled"""
         if "scheduler_enable" not in self._device_preferences:
             return None
-        return self._device_preferences["scheduler_enable"]["value"] == "true"
+        scheduler = self._device_preferences.get("scheduler_enable", {})
+        return scheduler.get("value") == "true"
 
 
     @property
@@ -163,13 +168,15 @@ class PhynPlusDevice(PhynDevice):
         """Return the valve state for the device."""
         if self.valve_changing:
             return self._last_known_valve_state
-        self._last_known_valve_state = self._device_state["sov_status"]["v"] == "Open"
-        return self._device_state["sov_status"]["v"] == "Open"
+        sov_status = self._device_state.get("sov_status", {})
+        self._last_known_valve_state = sov_status.get("v") == "Open"
+        return sov_status.get("v") == "Open"
 
     @property
     def valve_changing(self) -> bool:
         """Return the valve changing status"""
-        return self._device_state["sov_status"]["v"] == "Partial"
+        sov_status = self._device_state.get("sov_status", {})
+        return sov_status.get("v") == "Partial"
 
     async def async_setup(self):
         """Setup a new device coordinator"""
@@ -400,7 +407,7 @@ class PhynLeakTestWarning(PhynEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         if self._device._latest_health_test is None:
             return None
-        return self._device._latest_health_test['is_warn'] == True
+        return self._device._latest_health_test.get('is_warn', False)
 
 class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
@@ -414,7 +421,7 @@ class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         if self._device._latest_health_test is None:
             return None
-        return self._device._latest_health_test['is_leak'] == True
+        return self._device._latest_health_test.get('is_leak', False)
 
 class PhynScheduledLeakTestEnabledSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
