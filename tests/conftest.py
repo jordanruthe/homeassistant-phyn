@@ -17,8 +17,8 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(name="mock_phyn_api")
 def mock_phyn_api_fixture():
-    """Mock the Phyn API."""
-    with patch("custom_components.phyn.config_flow.async_get_api", new=AsyncMock()) as mock_api:
+    """Mock the Phyn API for config flow tests."""
+    with patch("aiophyn.async_get_api", new=AsyncMock()) as mock_api:
         mock_api_instance = MagicMock()
         
         # Mock the home.get_homes method as async
@@ -43,8 +43,8 @@ def mock_phyn_api_fixture():
 
 @pytest.fixture(name="mock_phyn_api_setup")
 def mock_phyn_api_setup_fixture():
-    """Mock the Phyn API for setup."""
-    with patch("custom_components.phyn.async_get_api", new=AsyncMock()) as mock_api:
+    """Mock the Phyn API for setup tests."""
+    with patch("aiophyn.async_get_api", new=AsyncMock()) as mock_api:
         mock_api_instance = MagicMock()
         
         # Mock the home.get_homes method as async
