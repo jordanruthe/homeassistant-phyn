@@ -291,20 +291,22 @@ class PhynPlusDevice(PhynDevice):
         
         self._latest_health_test = latest_test        
 
+    def _update_last_known_valve_state(self) -> None:
+        """Update last known valve state from device state. Must be called within _state_lock."""
+        sov_status = self._device_state.get("sov_status", {})
+        if sov_status.get("v") != "Partial":
+            self._last_known_valve_state = sov_status.get("v") == "Open"
+
     async def _update_device_state(self, *_) -> None:
         """Update the device state from the API."""
-        if 'last_updated' not in self._device_state or self._device_state['last_updated'] <= (math.floor(time.time()) - 60):
-            async with self._state_lock:
+        async with self._state_lock:
+            if 'last_updated' not in self._device_state or self._device_state['last_updated'] <= (math.floor(time.time()) - 60):
                 state_data = await self._coordinator.api_client.device.get_state(
                     self._phyn_device_id
                 )
                 self._device_state.update(state_data)
                 self._device_state['last_updated'] = math.floor(time.time())
-                
-                # Update last known valve state when not changing
-                sov_status = self._device_state.get("sov_status", {})
-                if sov_status.get("v") != "Partial":
-                    self._last_known_valve_state = sov_status.get("v") == "Open"
+                self._update_last_known_valve_state()
 
     async def on_device_update(self, device_id, data):
         if device_id == self._phyn_device_id:
@@ -321,9 +323,6 @@ class PhynPlusDevice(PhynDevice):
                     update_data.update({"flow_state": data["flow_state"]})
                 if "sov_state" in data:
                     update_data.update({"sov_status":{"v": data["sov_state"]}})
-                    # Update last known valve state when not changing
-                    if data["sov_state"] != "Partial":
-                        self._last_known_valve_state = data["sov_state"] == "Open"
                 if "sensor_data" in data:
                     if "pressure" in data["sensor_data"]:
                         update_data.update({"pressure": data["sensor_data"]["pressure"]})
@@ -331,6 +330,7 @@ class PhynPlusDevice(PhynDevice):
                         update_data.update({"temperature": data["sensor_data"]["temperature"]})
                 self._device_state.update(update_data)
                 self._device_state['last_updated'] = math.floor(time.time())
+                self._update_last_known_valve_state()
                 LOGGER.debug("Updating device %s Device State: %s", self._phyn_device_id, self._device_state)
 
             for entity in self.entities:
