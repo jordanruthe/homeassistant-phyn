@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from custom_components.phyn.const import DOMAIN
+from custom_components.phyn import async_migrate_entry
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -136,8 +137,6 @@ async def test_migrate_entry_v1_minor1(hass: HomeAssistant) -> None:
         minor_version=1,
     )
     entry.add_to_hass(hass)
-
-    from custom_components.phyn import async_migrate_entry
     
     assert await async_migrate_entry(hass, entry)
     assert entry.version == 1
@@ -159,8 +158,6 @@ async def test_migrate_entry_already_migrated(hass: HomeAssistant) -> None:
         minor_version=2,
     )
     entry.add_to_hass(hass)
-
-    from custom_components.phyn import async_migrate_entry
     
     assert await async_migrate_entry(hass, entry)
     assert entry.version == 1
@@ -182,7 +179,5 @@ async def test_migrate_entry_future_version(hass: HomeAssistant) -> None:
         minor_version=0,
     )
     entry.add_to_hass(hass)
-
-    from custom_components.phyn import async_migrate_entry
     
     assert not await async_migrate_entry(hass, entry)
