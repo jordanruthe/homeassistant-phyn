@@ -18,11 +18,10 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture(name="mock_phyn_api")
 def mock_phyn_api_fixture():
     """Mock the Phyn API."""
-    with patch("custom_components.phyn.config_flow.async_get_api") as mock_api:
-        mock_api_instance = AsyncMock()
-        mock_api.return_value = mock_api_instance
+    with patch("custom_components.phyn.config_flow.async_get_api", new=AsyncMock()) as mock_api:
+        mock_api_instance = MagicMock()
         
-        # Mock the home.get_homes method
+        # Mock the home.get_homes method as async
         mock_api_instance.home.get_homes = AsyncMock(return_value=[
             {
                 "id": "test-home-id",
@@ -36,17 +35,19 @@ def mock_phyn_api_fixture():
             }
         ])
         
+        # Make async_get_api return the instance
+        mock_api.return_value = mock_api_instance
+        
         yield mock_api
 
 
 @pytest.fixture(name="mock_phyn_api_setup")
 def mock_phyn_api_setup_fixture():
     """Mock the Phyn API for setup."""
-    with patch("custom_components.phyn.async_get_api") as mock_api:
-        mock_api_instance = AsyncMock()
-        mock_api.return_value = mock_api_instance
+    with patch("custom_components.phyn.async_get_api", new=AsyncMock()) as mock_api:
+        mock_api_instance = MagicMock()
         
-        # Mock the home.get_homes method
+        # Mock the home.get_homes method as async
         mock_api_instance.home.get_homes = AsyncMock(return_value=[
             {
                 "id": "test-home-id",
@@ -63,6 +64,9 @@ def mock_phyn_api_setup_fixture():
         # Mock MQTT
         mock_api_instance.mqtt.connect = AsyncMock()
         mock_api_instance.mqtt.disconnect_and_wait = AsyncMock()
+        
+        # Make async_get_api return the instance
+        mock_api.return_value = mock_api_instance
         
         yield mock_api
 
