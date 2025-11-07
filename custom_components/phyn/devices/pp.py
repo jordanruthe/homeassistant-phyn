@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiophyn.errors import RequestError
-from asyncio import timeout
+from asyncio import Lock, timeout
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -72,6 +72,7 @@ class PhynPlusDevice(PhynDevice):
         self._last_known_valve_state: bool = True
         self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
+        self._state_lock: Lock = Lock()
 
         self.entities = [
             PhynAutoShutoffModeSwitch(self),
@@ -169,7 +170,6 @@ class PhynPlusDevice(PhynDevice):
         if self.valve_changing:
             return self._last_known_valve_state
         sov_status = self._device_state.get("sov_status", {})
-        self._last_known_valve_state = sov_status.get("v") == "Open"
         return sov_status.get("v") == "Open"
 
     @property
@@ -291,28 +291,47 @@ class PhynPlusDevice(PhynDevice):
         
         self._latest_health_test = latest_test        
 
+    def _update_last_known_valve_state(self) -> None:
+        """Update last known valve state from device state. Must be called within _state_lock."""
+        sov_status = self._device_state.get("sov_status", {})
+        if sov_status.get("v") != "Partial":
+            self._last_known_valve_state = sov_status.get("v") == "Open"
+
+    async def _update_device_state(self, *_) -> None:
+        """Update the device state from the API."""
+        async with self._state_lock:
+            if 'last_updated' not in self._device_state or self._device_state['last_updated'] <= (math.floor(time.time()) - 60):
+                state_data = await self._coordinator.api_client.device.get_state(
+                    self._phyn_device_id
+                )
+                self._device_state.update(state_data)
+                self._device_state['last_updated'] = math.floor(time.time())
+                self._update_last_known_valve_state()
+
     async def on_device_update(self, device_id, data):
         if device_id == self._phyn_device_id:
-            self._rt_device_state = data
+            async with self._state_lock:
+                self._rt_device_state = data
 
-            update_data = {}
-            if "consumption" in data:
-                # Round consumption down to 2 decimal points.
-                update_data.update({"consumption": math.floor(data["consumption"]["v"] * 100) / 100})
-            if "flow" in data:
-                update_data.update({"flow": data["flow"]})
-            if "flow_state" in data:
-                update_data.update({"flow_state": data["flow_state"]})
-            if "sov_state" in data:
-                update_data.update({"sov_status":{"v": data["sov_state"]}})
-            if "sensor_data" in data:
-                if "pressure" in data["sensor_data"]:
-                    update_data.update({"pressure": data["sensor_data"]["pressure"]})
-                if "temperature" in data["sensor_data"]:
-                    update_data.update({"temperature": data["sensor_data"]["temperature"]})
-            self._device_state.update(update_data)
-            self._device_state['last_updated'] = math.floor(time.time())
-            LOGGER.debug("Updating device %s Device State: %s", self._phyn_device_id, self._device_state)
+                update_data = {}
+                if "consumption" in data:
+                    # Round consumption down to 2 decimal points.
+                    update_data.update({"consumption": math.floor(data["consumption"]["v"] * 100) / 100})
+                if "flow" in data:
+                    update_data.update({"flow": data["flow"]})
+                if "flow_state" in data:
+                    update_data.update({"flow_state": data["flow_state"]})
+                if "sov_state" in data:
+                    update_data.update({"sov_status":{"v": data["sov_state"]}})
+                if "sensor_data" in data:
+                    if "pressure" in data["sensor_data"]:
+                        update_data.update({"pressure": data["sensor_data"]["pressure"]})
+                    if "temperature" in data["sensor_data"]:
+                        update_data.update({"temperature": data["sensor_data"]["temperature"]})
+                self._device_state.update(update_data)
+                self._device_state['last_updated'] = math.floor(time.time())
+                self._update_last_known_valve_state()
+                LOGGER.debug("Updating device %s Device State: %s", self._phyn_device_id, self._device_state)
 
             for entity in self.entities:
                 entity.async_write_ha_state()
