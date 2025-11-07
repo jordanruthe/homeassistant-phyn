@@ -54,3 +54,33 @@ _2023.08.00_
 ## Developer note
 
 The base entity classes have been consolidated into a single canonical location: `custom_components/phyn/entities/base.py`. The legacy `custom_components/phyn/entity.py` file has been completely removed to eliminate duplicate class definitions. If you maintain local forks or external code that imports from the old path, please update imports to use `..entities.base` (for internal package imports) or `custom_components.phyn.entities.base` as appropriate.
+
+## Development and Testing
+
+This integration includes automated tests to ensure quality and reliability.
+
+### Running Tests Locally
+
+```bash
+# Install test dependencies
+pip install -r requirements_test.txt
+
+# Run all tests
+pytest tests/
+
+# Run with coverage report
+pytest tests/ --cov=custom_components.phyn --cov-report=term-missing -v
+
+# Run specific test file
+pytest tests/test_config_flow.py -v
+```
+
+### Continuous Integration
+
+Tests run automatically on every pull request via GitHub Actions. The test suite validates:
+- Config flow (user setup, authentication, error handling)
+- Integration setup and teardown
+- Configuration migration
+- Reauth and reconfigure flows
+
+This ensures compatibility with Home Assistant 2024.2.0+ and helps maintain Bronze tier quality standards.
