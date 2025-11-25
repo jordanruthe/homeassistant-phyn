@@ -19,6 +19,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 def mock_phyn_api_fixture():
     """Mock the Phyn API for config flow tests."""
     with patch("custom_components.phyn.config_flow.async_get_api") as mock_api:
+        # Create an async function that returns the mock API instance
         mock_api_instance = AsyncMock()
         
         # Mock the home object and its methods
@@ -36,8 +37,12 @@ def mock_phyn_api_fixture():
             }
         ])
         
-        # Make async_get_api return the instance
-        mock_api.return_value = mock_api_instance
+        # Make async_get_api an async function that returns the instance
+        # This fixes: TypeError: object AsyncMock can't be used in 'await' expression
+        async def _async_get_api(*args, **kwargs):
+            return mock_api_instance
+        
+        mock_api.side_effect = _async_get_api
         
         yield mock_api
 
@@ -90,9 +95,14 @@ def mock_phyn_api_setup_fixture():
             "fw_version": "1.0.0",
             "release_notes": "https://example.com/release-notes"
         }])
+        mock_api_instance.device.run_leak_test = AsyncMock(return_value={"code": "success"})
         
-        # Make async_get_api return the instance
-        mock_api.return_value = mock_api_instance
+        # Make async_get_api an async function that returns the instance
+        # This fixes: TypeError: object AsyncMock can't be used in 'await' expression
+        async def _async_get_api(*args, **kwargs):
+            return mock_api_instance
+        
+        mock_api.side_effect = _async_get_api
         
         yield mock_api
 
@@ -106,6 +116,7 @@ def mock_coordinator_fixture():
         mock_instance.add_device = MagicMock()
         mock_instance.async_refresh = AsyncMock()
         mock_instance.async_setup = AsyncMock()
+        mock_instance.async_config_entry_first_refresh = AsyncMock()
         mock_instance.async_add_listener = MagicMock(return_value=MagicMock())
         mock_coord.return_value = mock_instance
         yield mock_coord
