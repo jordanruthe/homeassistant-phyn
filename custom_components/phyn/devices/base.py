@@ -107,11 +107,11 @@ class PhynDevice:
         return self._device_state.get("serial_number", "")
     
     async def async_setup(self) -> None:
-        """Setup the device."""
+        """Setup the device. Override in subclasses if needed."""
         pass
 
     async def async_update_data(self) -> None:
-        """Update device data. Override in subclasses."""
+        """Update device data. Must be overridden by subclasses."""
         pass
 
     async def _update_firmware_information(self, *_) -> None:
