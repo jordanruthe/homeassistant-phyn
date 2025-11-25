@@ -1,6 +1,6 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
 from asyncio import Lock, timeout
@@ -45,6 +45,9 @@ from .base import PhynDevice
 import math
 import time
 
+if TYPE_CHECKING:
+    from ..update_coordinator import PhynDataUpdateCoordinator
+
 WATER_ICON = "mdi:water"
 GAUGE_ICON = "mdi:gauge"
 NAME_DAILY_USAGE = "Daily water usage"
@@ -56,10 +59,14 @@ class PhynPlusDevice(PhynDevice):
     """Phyn device object."""
 
     def __init__(
-        self, coordinator, home_id: str, device_id: str, product_code: str
+        self,
+        coordinator: PhynDataUpdateCoordinator,
+        home_id: str,
+        device_id: str,
+        product_code: str
     ) -> None:
         """Initialize the device."""
-        super().__init__ (coordinator, home_id, device_id, product_code)
+        super().__init__(coordinator, home_id, device_id, product_code)
         self._device_state: dict[str, Any] = {
             "flow_state": {
                 "v": 0.0,
@@ -114,19 +121,19 @@ class PhynPlusDevice(PhynDevice):
             raise UpdateFailed(error) from error
 
     @property
-    def consumption(self) -> float:
+    def consumption(self) -> float | None:
         """Return the current consumption for today in gallons."""
         if "consumption" not in self._rt_device_state:
             return None
         return self._device_state.get("consumption")
 
     @property
-    def consumption_today(self) -> float:
+    def consumption_today(self) -> float | None:
         """Return the current consumption for today in gallons."""
         return self._water_usage.get("water_consumption")
 
     @property
-    def current_flow_rate(self) -> float:
+    def current_flow_rate(self) -> float | None:
         """Return current flow rate in gpm."""
         flow = self._device_state.get("flow", {})
         if "v" not in flow:
@@ -156,7 +163,7 @@ class PhynPlusDevice(PhynDevice):
         return round(temp.get("mean", 0), 2)
 
     @property
-    def scheduled_leak_test_enabled(self) -> bool:
+    def scheduled_leak_test_enabled(self) -> bool | None:
         """Return if the scheduled leak test is enabled"""
         if "scheduler_enable" not in self._device_preferences:
             return None
@@ -178,7 +185,7 @@ class PhynPlusDevice(PhynDevice):
         sov_status = self._device_state.get("sov_status", {})
         return sov_status.get("v") == "Partial"
 
-    async def async_setup(self):
+    async def async_setup(self) -> str:  # type: ignore[override]
         """Setup a new device coordinator"""
         LOGGER.debug("Setting up coordinator")
 
@@ -187,7 +194,7 @@ class PhynPlusDevice(PhynDevice):
         return self._device_state["sov_status"]["v"]
     
     @property
-    def autoshutoff_enabled(self) -> bool:
+    def autoshutoff_enabled(self) -> bool | None:
         """Return True if auto shutoff enabled"""
         if "auto_shutoff_enable" not in self._auto_shutoff:
             return None
@@ -199,7 +206,7 @@ class PhynPlusDevice(PhynDevice):
         self._auto_shutoff["auto_shutoff_enable"] = state
 
     @property
-    def away_mode(self) -> bool:
+    def away_mode(self) -> bool | None:
         """Return True if device is in away mode."""
         if "leak_sensitivity_away_mode" not in self._device_preferences:
             return None
@@ -342,17 +349,19 @@ class PhynPlusDevice(PhynDevice):
 class PhynAutoShutoffModeSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__("autoshutoff_enabled", "Autoshutoff Enabled", device)
-        self._preference_name = "autoshutoff_enabled"
+        self._preference_name: str | None = "autoshutoff_enabled"
 
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         return self._device.autoshutoff_enabled
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon to use for the away mode."""
         if self.is_on:
             return "mdi:bag-suitcase"
@@ -371,17 +380,19 @@ class PhynAutoShutoffModeSwitch(PhynSwitchEntity):
 class PhynAwayModeSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__("away_mode", "Away Mode", device)
-        self._preference_name = "leak_sensitivity_away_mode"
+        self._preference_name: str | None = "leak_sensitivity_away_mode"
 
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         return self._device.away_mode
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon to use for the away mode."""
         if self.is_on:
             return "mdi:bag-suitcase"
@@ -394,10 +405,12 @@ class PhynFlowState(PhynEntity, SensorEntity):
     #_attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
     #_attr_device_class = SensorDeviceClass.WATER
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the daily water usage sensor."""
         super().__init__("water_flow_state", "Water Flowing", device)
-        self._state: str = None
+        self._state: str | None = None
 
     @property
     def native_value(self) -> str | None:
@@ -409,7 +422,9 @@ class PhynLeakTestSensor(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the leak test sensor."""
         super().__init__("leak_test_running", "Leak Test Running", device)
 
@@ -421,12 +436,14 @@ class PhynLeakTestWarning(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the leak test warning sensor."""
         super().__init__("leak_test_warning", "Leak Test Warning", device)
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         if self._device._latest_health_test is None:
             return None
         return self._device._latest_health_test.get('is_warn', False)
@@ -435,12 +452,14 @@ class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the leak test leak sensor."""
         super().__init__("leak_test_leak", "Leak Detected", device)
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         if self._device._latest_health_test is None:
             return None
         return self._device._latest_health_test.get('is_leak', False)
@@ -448,17 +467,19 @@ class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
 class PhynScheduledLeakTestEnabledSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__("scheduled_leak_test_enabled", "Scheduled Leak Test Enabled", device)
-        self._preference_name = "scheduler_enable"
+        self._preference_name: str | None = "scheduler_enable"
     
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         return self._device.scheduled_leak_test_enabled
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon to use for the away mode."""
         if self.is_on:
             return "mdi:bag-suitcase"
@@ -472,10 +493,12 @@ class PhynConsumptionSensor(PhynEntity, SensorEntity):
     _attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
     _attr_device_class = SensorDeviceClass.WATER
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the daily water usage sensor."""
         super().__init__("consumption", "Total Water Usage", device)
-        self._state: float = None
+        self._state: float | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -493,10 +516,12 @@ class PhynCurrentFlowRateSensor(PhynEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
     _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.GALLONS_PER_MINUTE
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the flow rate sensor."""
         super().__init__("current_flow_rate", NAME_FLOW_RATE, device)
-        self._state: float = None
+        self._state: float | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -509,7 +534,9 @@ class PhynCurrentFlowRateSensor(PhynEntity, SensorEntity):
 class PhynValve(PhynEntity, ValveEntity):
     """ValveEntity for the Phyn valve."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Valve."""
         super().__init__("shutoff_valve", "Shutoff valve", device)
         self._attr_supported_features = ValveEntityFeature(ValveEntityFeature.OPEN | ValveEntityFeature.CLOSE)
