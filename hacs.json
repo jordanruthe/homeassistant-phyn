@@ -2,7 +2,5 @@
   "name": "Phyn Smart Water Assistant",
   "content_in_root": false,
   "render_readme": true,
-  "homeassistant": "2024.2.0",
-  "domains": ["phyn"],
-  "iot_class": "cloud_polling"
+  "homeassistant": "2024.2.0"
 }
