@@ -18,10 +18,11 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture(name="mock_phyn_api")
 def mock_phyn_api_fixture():
     """Mock the Phyn API for config flow tests."""
-    with patch("aiophyn.async_get_api", new=AsyncMock()) as mock_api:
-        mock_api_instance = MagicMock()
+    with patch("custom_components.phyn.config_flow.async_get_api") as mock_api:
+        mock_api_instance = AsyncMock()
         
-        # Mock the home.get_homes method as async
+        # Mock the home object and its methods
+        mock_api_instance.home = AsyncMock()
         mock_api_instance.home.get_homes = AsyncMock(return_value=[
             {
                 "id": "test-home-id",
@@ -44,10 +45,11 @@ def mock_phyn_api_fixture():
 @pytest.fixture(name="mock_phyn_api_setup")
 def mock_phyn_api_setup_fixture():
     """Mock the Phyn API for setup tests."""
-    with patch("aiophyn.async_get_api", new=AsyncMock()) as mock_api:
-        mock_api_instance = MagicMock()
+    with patch("custom_components.phyn.async_get_api") as mock_api:
+        mock_api_instance = AsyncMock()
         
-        # Mock the home.get_homes method as async
+        # Mock the home object and its methods
+        mock_api_instance.home = AsyncMock()
         mock_api_instance.home.get_homes = AsyncMock(return_value=[
             {
                 "id": "test-home-id",
@@ -61,14 +63,41 @@ def mock_phyn_api_setup_fixture():
             }
         ])
         
-        # Mock MQTT
+        # Mock MQTT with proper async methods
+        mock_api_instance.mqtt = AsyncMock()
         mock_api_instance.mqtt.connect = AsyncMock()
         mock_api_instance.mqtt.disconnect_and_wait = AsyncMock()
+        mock_api_instance.mqtt.add_event_handler = AsyncMock()
+        mock_api_instance.mqtt.subscribe = AsyncMock()
+        
+        # Mock device API
+        mock_api_instance.device = AsyncMock()
+        mock_api_instance.device.get_state = AsyncMock(return_value={
+            "sov_status": {"v": "Open"},
+            "online_status": {"v": "online"},
+            "fw_version": "1.0.0",
+            "product_code": "PP1",
+            "serial_number": "TEST123",
+        })
         
         # Make async_get_api return the instance
         mock_api.return_value = mock_api_instance
         
         yield mock_api
+
+
+@pytest.fixture(name="mock_coordinator")
+def mock_coordinator_fixture():
+    """Mock coordinator for setup tests."""
+    with patch("custom_components.phyn.PhynDataUpdateCoordinator") as mock_coord:
+        mock_instance = AsyncMock()
+        mock_instance.devices = []
+        mock_instance.add_device = MagicMock()
+        mock_instance.async_refresh = AsyncMock()
+        mock_instance.async_setup = AsyncMock()
+        mock_instance.async_add_listener = MagicMock(return_value=MagicMock())
+        mock_coord.return_value = mock_instance
+        yield mock_coord
 
 
 @pytest.fixture(name="mock_config_entry")
