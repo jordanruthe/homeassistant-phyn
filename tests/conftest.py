@@ -79,6 +79,17 @@ def mock_phyn_api_setup_fixture():
             "product_code": "PP1",
             "serial_number": "TEST123",
         })
+        mock_api_instance.device.get_consumption = AsyncMock(return_value={
+            "water_consumption": 0.0
+        })
+        mock_api_instance.device.get_autoshuftoff_status = AsyncMock(return_value={
+            "auto_shutoff_enable": False
+        })
+        mock_api_instance.device.get_device_preferences = AsyncMock(return_value=[])
+        mock_api_instance.device.get_latest_firmware_info = AsyncMock(return_value=[{
+            "fw_version": "1.0.0",
+            "release_notes": "https://example.com/release-notes"
+        }])
         
         # Make async_get_api return the instance
         mock_api.return_value = mock_api_instance
