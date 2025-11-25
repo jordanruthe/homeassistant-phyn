@@ -334,6 +334,9 @@ class PhynPlusDevice(PhynDevice):
                 LOGGER.debug("Updating device %s Device State: %s", self._phyn_device_id, self._device_state)
 
             for entity in self.entities:
+                # Skip entities that aren't fully initialized yet
+                if getattr(entity, "hass", None) is None:
+                    continue
                 entity.async_write_ha_state()
 
 class PhynAutoShutoffModeSwitch(PhynSwitchEntity):
