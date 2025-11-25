@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
 from aiophyn.errors import RequestError
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -25,11 +27,21 @@ from ..entities.base import (
 )
 from ..const import LOGGER
 
+if TYPE_CHECKING:
+    from ..update_coordinator import PhynDataUpdateCoordinator
+
 class PhynWaterSensorDevice(PhynDevice):
     """Phyn Water Sensor Device"""
-    def __init__ (self, coordinator, home_id: str, device_id: str, product_code: str) -> None:
-        self._water_statistics = {}
-        super().__init__ (coordinator, home_id, device_id, product_code)
+    def __init__(
+        self,
+        coordinator: PhynDataUpdateCoordinator,
+        home_id: str,
+        device_id: str,
+        product_code: str
+    ) -> None:
+        """Initialize the Phyn Water Sensor device."""
+        self._water_statistics: dict[str, Any] = {}
+        super().__init__(coordinator, home_id, device_id, product_code)
 
         self.entities = [
             PhynAlertSensor(self, "high_humidity_alert", "High Humidity Alert", "high_humidity"),
@@ -148,9 +160,9 @@ class PhynWaterSensorDevice(PhynDevice):
 
         LOGGER.debug("Phyn Water device state (%s): %s", (self._phyn_device_id, self._device_state))
 
-    async def async_setup(self):
+    async def async_setup(self) -> None:
         """Async setup not needed"""
-        return None
+        pass
 
 class PhynBatterySensor(PhynEntity, SensorEntity):
     """Monitors the battery level."""
@@ -159,11 +171,13 @@ class PhynBatterySensor(PhynEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
 
-    def __init__(self, device, name, readable_name):
+    _device: PhynWaterSensorDevice
+
+    def __init__(self, device: PhynWaterSensorDevice, name: str, readable_name: str) -> None:
         """Initialize the battery sensor."""
         super().__init__(name, readable_name, device)
-        self._state: float = None
-        self._device_property = "battery"
+        self._state: float | None = None
+        self._device_property: str = "battery"
 
     @property
     def native_value(self) -> float | None:

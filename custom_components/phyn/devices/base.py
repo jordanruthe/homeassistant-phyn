@@ -1,22 +1,34 @@
 """ Generic Phyn Device"""
+from __future__ import annotations
 
-from typing import Any
-from ..const import LOGGER
+from typing import TYPE_CHECKING, Any
 import math
 import time
 
+from ..const import LOGGER
+
+if TYPE_CHECKING:
+    from ..update_coordinator import PhynDataUpdateCoordinator
+
 class PhynDevice:
-    """Generice Phyn Device"""
-    def __init__ (self, coordinator, home_id: str, device_id: str, product_code: str) -> None:
-        self._coordinator = coordinator
+    """Generic Phyn Device"""
+    def __init__(
+        self,
+        coordinator: PhynDataUpdateCoordinator,
+        home_id: str,
+        device_id: str,
+        product_code: str
+    ) -> None:
+        """Initialize the Phyn device."""
+        self._coordinator: PhynDataUpdateCoordinator = coordinator
         self._phyn_home_id: str = home_id
         self._phyn_device_id: str = device_id
         self._product_code: str = product_code
         self._manufacturer: str = "Phyn"
         self._device_state: dict[str, Any] = {}
-        self._device_preferences: dict[dict[str, Any]] = {}
+        self._device_preferences: dict[str, dict[str, Any]] = {}
         self._firmware_info: dict[str, Any] = {}
-        self._update_count = 0
+        self._update_count: int = 0
     
     @property
     def available(self) -> bool:
@@ -25,7 +37,7 @@ class PhynDevice:
         return online_status.get("v") == "online"
     
     @property
-    def coordinator(self):
+    def coordinator(self) -> PhynDataUpdateCoordinator:
         """Return update coordinator"""
         return self._coordinator
 
@@ -35,7 +47,7 @@ class PhynDevice:
         return f"{self.manufacturer} {self.model}"
 
     @property
-    def firmware_has_update(self) -> bool:
+    def firmware_has_update(self) -> bool | None:
         """Return if the firmware has an update"""
         if "fw_version" not in self._firmware_info:
             return None
@@ -85,7 +97,7 @@ class PhynDevice:
         return self._device_state.get("product_code", "")
 
     @property
-    def rssi(self) -> float:
+    def rssi(self) -> float | None:
         """Return rssi for device."""
         return self._device_state.get("signal_strength")
 
@@ -94,7 +106,12 @@ class PhynDevice:
         """Return the serial number for the device."""
         return self._device_state.get("serial_number", "")
     
-    async def async_setup(self):
+    async def async_setup(self) -> None:
+        """Setup the device. Override in subclasses if needed."""
+        pass
+
+    async def async_update_data(self) -> None:
+        """Update device data. Must be overridden by subclasses."""
         pass
 
     async def _update_firmware_information(self, *_) -> None:

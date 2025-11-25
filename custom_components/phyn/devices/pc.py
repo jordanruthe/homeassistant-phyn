@@ -1,6 +1,6 @@
 """Support for Phyn Classic Water Monitor sensors."""
 from __future__ import annotations
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
 from asyncio import timeout
@@ -38,14 +38,21 @@ from ..entities.base import (
 )
 from .base import PhynDevice
 
+if TYPE_CHECKING:
+    from ..update_coordinator import PhynDataUpdateCoordinator
+
 class PhynClassicDevice(PhynDevice):
     """Phyn device object."""
 
     def __init__(
-        self, coordinator, home_id: str, device_id: str, product_code: str
+        self,
+        coordinator: PhynDataUpdateCoordinator,
+        home_id: str,
+        device_id: str,
+        product_code: str
     ) -> None:
         """Initialize the device."""
-        super().__init__ (coordinator, home_id, device_id, product_code)
+        super().__init__(coordinator, home_id, device_id, product_code)
         self._device_state: dict[str, Any] = {
             "cold_line_num": None,
             "hot_line_num": None,
@@ -85,12 +92,12 @@ class PhynClassicDevice(PhynDevice):
         return self._device_state.get('cold_line_num')
 
     @property
-    def consumption_today(self) -> float:
+    def consumption_today(self) -> float | None:
         """Return the current consumption for today in gallons."""
         return self._water_usage.get("water_consumption")
 
     @property
-    def current_flow_rate(self) -> float:
+    def current_flow_rate(self) -> float | None:
         """Return current flow rate in gpm."""
         flow = self._device_state.get("flow", {})
         if "v" not in flow:
@@ -149,6 +156,6 @@ class PhynClassicDevice(PhynDevice):
         )
         LOGGER.debug("Updated Phyn consumption data: %s", self._water_usage)
 
-    async def async_setup(self):
+    async def async_setup(self) -> None:
         """Async setup not needed"""
-        return None
+        pass
