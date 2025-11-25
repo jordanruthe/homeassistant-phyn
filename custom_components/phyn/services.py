@@ -31,7 +31,7 @@ async def phyn_leak_test(service: ServiceCall):
     assert device_id is not None
     
     client = service.hass.data[DOMAIN][CLIENT]
-    LOGGER.debug("Running leak test for device_id: %s (extended: %s)" % (device_id, extended_test))
+    LOGGER.debug("Running leak test for device_id: %s (extended: %s)", device_id, extended_test)
     result = await client.device.run_leak_test(device_id, extended_test)
     assert 'code' in result and result['code'] == 'success'
 
