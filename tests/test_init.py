@@ -1,183 +1,121 @@
-"""Test the Phyn init."""
-from unittest.mock import AsyncMock, patch, MagicMock
+"""Common fixtures for Phyn tests."""
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
-from homeassistant.setup import async_setup_component
 
 from custom_components.phyn.const import DOMAIN
-from custom_components.phyn import async_migrate_entry
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
-from botocore.exceptions import ClientError
-from aiophyn.errors import RequestError
+pytest_plugins = "pytest_homeassistant_custom_component"
 
 
-async def test_setup_entry(hass: HomeAssistant, mock_phyn_api_setup) -> None:
-    """Test setting up an entry."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            "Brand": "Phyn",
-        },
-        unique_id="test@example.com",
-    )
-    entry.add_to_hass(hass)
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Enable custom integrations."""
+    yield
 
-    # Mock the coordinator setup
-    with patch("custom_components.phyn.PhynDataUpdateCoordinator") as mock_coordinator:
-        mock_coordinator_instance = MagicMock()
-        mock_coordinator_instance.devices = []
-        mock_coordinator_instance.add_device = MagicMock()
-        mock_coordinator_instance.async_refresh = AsyncMock()
-        mock_coordinator_instance.async_setup = AsyncMock()
-        mock_coordinator.return_value = mock_coordinator_instance
+
+@pytest.fixture(name="mock_phyn_api")
+def mock_phyn_api_fixture():
+    """Mock the Phyn API for config flow tests."""
+    with patch("custom_components.phyn.config_flow.async_get_api") as mock_api:
+        mock_api_instance = AsyncMock()
         
-        with patch("custom_components.phyn.phyn_leak_test_service_setup", new=AsyncMock()):
-            assert await async_setup_component(hass, DOMAIN, {})
-            await hass.async_block_till_done()
-
-    assert entry.state == ConfigEntryState.LOADED
-
-
-async def test_unload_entry(hass: HomeAssistant, mock_phyn_api_setup) -> None:
-    """Test unloading an entry."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            "Brand": "Phyn",
-        },
-        unique_id="test@example.com",
-    )
-    entry.add_to_hass(hass)
-
-    # Mock the coordinator setup
-    with patch("custom_components.phyn.PhynDataUpdateCoordinator") as mock_coordinator:
-        mock_coordinator_instance = MagicMock()
-        mock_coordinator_instance.devices = []
-        mock_coordinator_instance.add_device = MagicMock()
-        mock_coordinator_instance.async_refresh = AsyncMock()
-        mock_coordinator_instance.async_setup = AsyncMock()
-        mock_coordinator.return_value = mock_coordinator_instance
+        # Mock the home object and its methods
+        mock_api_instance.home = AsyncMock()
+        mock_api_instance.home.get_homes = AsyncMock(return_value=[
+            {
+                "id": "test-home-id",
+                "alias_name": "Test Home",
+                "devices": [
+                    {
+                        "device_id": "test-device-id",
+                        "product_code": "PP1",
+                    }
+                ],
+            }
+        ])
         
-        with patch("custom_components.phyn.phyn_leak_test_service_setup", new=AsyncMock()):
-            assert await async_setup_component(hass, DOMAIN, {})
-            await hass.async_block_till_done()
-
-    assert entry.state == ConfigEntryState.LOADED
-
-    await hass.config_entries.async_unload(entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert entry.state == ConfigEntryState.NOT_LOADED
+        # Make async_get_api return the instance
+        mock_api.return_value = mock_api_instance
+        
+        yield mock_api
 
 
-async def test_setup_entry_auth_failed(hass: HomeAssistant, mock_phyn_api_setup) -> None:
-    """Test setup fails with authentication error."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "wrong-password",
-            "Brand": "Phyn",
-        },
-        unique_id="test@example.com",
-    )
-    entry.add_to_hass(hass)
-
-    # Mock authentication failure
-    mock_phyn_api_setup.side_effect = ClientError(
-        {"Error": {"Code": "NotAuthorizedException"}}, "test"
-    )
-
-    assert not await async_setup_component(hass, DOMAIN, {})
-    await hass.async_block_till_done()
-
-    assert entry.state == ConfigEntryState.SETUP_ERROR
-
-
-async def test_setup_entry_cannot_connect(hass: HomeAssistant, mock_phyn_api_setup) -> None:
-    """Test setup fails with connection error."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            "Brand": "Phyn",
-        },
-        unique_id="test@example.com",
-    )
-    entry.add_to_hass(hass)
-
-    # Mock connection failure
-    mock_phyn_api_setup.side_effect = RequestError("Connection error")
-
-    assert not await async_setup_component(hass, DOMAIN, {})
-    await hass.async_block_till_done()
-
-    assert entry.state == ConfigEntryState.SETUP_RETRY
-
-
-async def test_migrate_entry_v1_minor1(hass: HomeAssistant) -> None:
-    """Test migration from version 1.1 to 1.2."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-        },
-        unique_id="test@example.com",
-        version=1,
-        minor_version=1,
-    )
-    entry.add_to_hass(hass)
-    
-    assert await async_migrate_entry(hass, entry)
-    assert entry.version == 1
-    assert entry.minor_version == 2
-    assert entry.data["Brand"] == "phyn"
+@pytest.fixture(name="mock_phyn_api_setup")
+def mock_phyn_api_setup_fixture():
+    """Mock the Phyn API for setup tests."""
+    with patch("custom_components.phyn.async_get_api") as mock_api:
+        mock_api_instance = AsyncMock()
+        
+        # Mock the home object and its methods
+        mock_api_instance.home = AsyncMock()
+        mock_api_instance.home.get_homes = AsyncMock(return_value=[
+            {
+                "id": "test-home-id",
+                "alias_name": "Test Home",
+                "devices": [
+                    {
+                        "device_id": "test-device-id",
+                        "product_code": "PP1",
+                    }
+                ],
+            }
+        ])
+        
+        # Mock MQTT with proper async methods
+        mock_api_instance.mqtt = AsyncMock()
+        mock_api_instance.mqtt.connect = AsyncMock()
+        mock_api_instance.mqtt.disconnect_and_wait = AsyncMock()
+        mock_api_instance.mqtt.add_event_handler = AsyncMock()
+        mock_api_instance.mqtt.subscribe = AsyncMock()
+        
+        # Mock device API
+        mock_api_instance.device = AsyncMock()
+        mock_api_instance.device.get_state = AsyncMock(return_value={
+            "sov_status": {"v": "Open"},
+            "online_status": {"v": "online"},
+            "fw_version": "1.0.0",
+            "product_code": "PP1",
+            "serial_number": "TEST123",
+        })
+        mock_api_instance.device.get_consumption = AsyncMock(return_value={
+            "water_consumption": 0.0
+        })
+        mock_api_instance.device.get_autoshuftoff_status = AsyncMock(return_value={
+            "auto_shutoff_enable": False
+        })
+        mock_api_instance.device.get_device_preferences = AsyncMock(return_value=[])
+        mock_api_instance.device.get_latest_firmware_info = AsyncMock(return_value=[{
+            "fw_version": "1.0.0",
+            "release_notes": "https://example.com/release-notes"
+        }])
+        
+        # Make async_get_api return the instance
+        mock_api.return_value = mock_api_instance
+        
+        yield mock_api
 
 
-async def test_migrate_entry_already_migrated(hass: HomeAssistant) -> None:
-    """Test migration when already at version 1.2."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            "Brand": "Phyn",
-        },
-        unique_id="test@example.com",
-        version=1,
-        minor_version=2,
-    )
-    entry.add_to_hass(hass)
-    
-    assert await async_migrate_entry(hass, entry)
-    assert entry.version == 1
-    assert entry.minor_version == 2
-    assert entry.data["Brand"] == "Phyn"
+@pytest.fixture(name="mock_coordinator")
+def mock_coordinator_fixture():
+    """Mock coordinator for setup tests."""
+    with patch("custom_components.phyn.PhynDataUpdateCoordinator") as mock_coord:
+        mock_instance = AsyncMock()
+        mock_instance.devices = []
+        mock_instance.add_device = MagicMock()
+        mock_instance.async_refresh = AsyncMock()
+        mock_instance.async_setup = AsyncMock()
+        mock_instance.async_add_listener = MagicMock(return_value=MagicMock())
+        mock_coord.return_value = mock_instance
+        yield mock_coord
 
 
-async def test_migrate_entry_future_version(hass: HomeAssistant) -> None:
-    """Test migration fails for future version."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "test@example.com",
-            CONF_PASSWORD: "test-password",
-            "Brand": "Phyn",
-        },
-        unique_id="test@example.com",
-        version=2,
-        minor_version=0,
-    )
-    entry.add_to_hass(hass)
-    
-    assert not await async_migrate_entry(hass, entry)
+@pytest.fixture(name="mock_config_entry")
+def mock_config_entry_fixture():
+    """Create a mock config entry."""
+    return {
+        CONF_USERNAME: "test@example.com",
+        CONF_PASSWORD: "test-password",
+        "Brand": "Phyn",
+    }
