@@ -1,7 +1,7 @@
 """Base entity class for Phyn entities."""
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
@@ -30,6 +30,9 @@ from homeassistant.const import (
 
 from ..const import DOMAIN as PHYN_DOMAIN
 
+if TYPE_CHECKING:
+    from ..devices.base import PhynDevice
+
 WATER_ICON = "mdi:water"
 NAME_DAILY_USAGE = "Daily water usage"
 
@@ -40,18 +43,17 @@ class PhynEntity(Entity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    #TEMPORARY: Typing disabled due to circular dependencies
     def __init__(
         self,
         entity_type: str,
         name: str,
-        device, #: PhynDeviceDataUpdateCoordinator,
-        **kwargs,
+        device: PhynDevice,
+        **kwargs: Any,
     ) -> None:
         """Init Phyn entity."""
-        self._attr_name = name
-        self._attr_unique_id = f"{device.id}_{entity_type}"
-        self._device = device #: PhynDeviceDataUpdateCoordinator = device
+        self._attr_name: str = name
+        self._attr_unique_id: str = f"{device.id}_{entity_type}"
+        self._device: PhynDevice = device
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -71,22 +73,33 @@ class PhynEntity(Entity):
         """Return True if device is available."""
         return self._device.available
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         """Update Phyn entity."""
-        await self._device.async_request_refresh()
+        await self._device.async_request_refresh()  # type: ignore[attr-defined]
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
-        self.async_on_remove(self._device.coordinator.async_add_listener(self.async_write_ha_state))
+        try:
+            # Prefer coordinator listener when available
+            self.async_on_remove(self._device.coordinator.async_add_listener(self.async_write_ha_state))
+        except AttributeError:
+            # Fallback for older device structure that exposes async_add_listener directly
+            self.async_on_remove(self._device.async_add_listener(self.async_write_ha_state))  # type: ignore[attr-defined]
 
 class PhynAlertSensor(PhynEntity, BinarySensorEntity):
     """Alert sensor"""
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    def __init__(self, device, name, readable_name, device_property):
-        """Intialize Firmware Update Sensor."""
+    def __init__(
+        self,
+        device: PhynDevice,
+        name: str,
+        readable_name: str,
+        device_property: str
+    ) -> None:
+        """Initialize Alert Sensor."""
         super().__init__(name, readable_name, device)
-        self._device_property = device_property
+        self._device_property: str = device_property
 
     @property
     def is_on(self) -> bool | None:
@@ -102,28 +115,28 @@ class PhynDailyUsageSensor(PhynEntity, SensorEntity):
     _attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
     _attr_device_class = SensorDeviceClass.WATER
 
-    def __init__(self, device):
+    def __init__(self, device: PhynDevice) -> None:
         """Initialize the daily water usage sensor."""
         super().__init__("daily_consumption", NAME_DAILY_USAGE, device)
-        self._state: float = None
+        self._state: float | None = None
 
     @property
     def native_value(self) -> float | None:
         """Return the current daily usage."""
-        if self._device.consumption_today is None:
+        if self._device.consumption_today is None:  # type: ignore[attr-defined]
             return None
-        return round(self._device.consumption_today, 1)
+        return round(self._device.consumption_today, 1)  # type: ignore[attr-defined]
 
 class PhynFirmwareUpdateAvailableSensor(PhynEntity, BinarySensorEntity):
     """Firmware Update Available Sensor"""
     _attr_device_class = BinarySensorDeviceClass.UPDATE
 
-    def __init__(self, device):
-        """Intialize Firmware Update Sensor."""
+    def __init__(self, device: PhynDevice) -> None:
+        """Initialize Firmware Update Sensor."""
         super().__init__("firmware_update_available", "Firmware Update Available", device)
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         return self._device.firmware_has_update
 
 class PhynFirwmwareUpdateEntity(PhynEntity, UpdateEntity):
@@ -132,7 +145,8 @@ class PhynFirwmwareUpdateEntity(PhynEntity, UpdateEntity):
     _attr_device_class = UpdateDeviceClass.FIRMWARE
     _attr_supported_features = UpdateEntityFeature.INSTALL | UpdateEntityFeature.RELEASE_NOTES
 
-    def __init__(self, device):
+    def __init__(self, device: PhynDevice) -> None:
+        """Initialize Firmware Update Entity."""
         super().__init__("firmware_update", "Firmware Update", device)
 
     @property
@@ -160,31 +174,31 @@ class PhynSwitchEntity(PhynEntity, SwitchEntity):
         self,
         entity_type: str,
         name: str,
-        device,
-        **kwargs,
+        device: PhynDevice,
+        **kwargs: Any,
     ) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__(entity_type, name, device)
-        self._preference_name = None
+        self._preference_name: str | None = None
 
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         """Switch State"""
         raise NotImplementedError()
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return True if away mode is on."""
         return self._state
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the preference."""
-        await self._device.set_device_preference(self._preference_name, "true")
+        await self._device.set_device_preference(self._preference_name, "true")  # type: ignore[attr-defined]
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the preference."""
-        await self._device.set_device_preference(self._preference_name, "false")
+        await self._device.set_device_preference(self._preference_name, "false")  # type: ignore[attr-defined]
         self.async_write_ha_state()
 
 class PhynHumiditySensor(PhynEntity, SensorEntity):
@@ -194,11 +208,17 @@ class PhynHumiditySensor(PhynEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
 
-    def __init__(self, device, name, readable_name, device_property = None):
-        """Initialize the temperature sensor."""
+    def __init__(
+        self,
+        device: PhynDevice,
+        name: str,
+        readable_name: str,
+        device_property: str | None = None
+    ) -> None:
+        """Initialize the humidity sensor."""
         super().__init__(name, readable_name, device)
-        self._state: float = None
-        self._device_property = device_property
+        self._state: float | None = None
+        self._device_property: str | None = device_property
 
     @property
     def native_value(self) -> float | None:
@@ -216,11 +236,17 @@ class PhynPressureSensor(PhynEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfPressure.PSI
     _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
 
-    def __init__(self, device, name, readable_name, device_property = None):
+    def __init__(
+        self,
+        device: PhynDevice,
+        name: str,
+        readable_name: str,
+        device_property: str | None = None
+    ) -> None:
         """Initialize the pressure sensor."""
         super().__init__(name, readable_name, device)
-        self._state: float = None
-        self._device_property = device_property
+        self._state: float | None = None
+        self._device_property: str | None = device_property
 
     @property
     def native_value(self) -> float | None:
@@ -238,11 +264,17 @@ class PhynTemperatureSensor(PhynEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
     _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
 
-    def __init__(self, device, name, readable_name, device_property = None):
+    def __init__(
+        self,
+        device: PhynDevice,
+        name: str,
+        readable_name: str,
+        device_property: str | None = None
+    ) -> None:
         """Initialize the temperature sensor."""
         super().__init__(name, readable_name, device)
-        self._state: float = None
-        self._device_property = device_property
+        self._state: float | None = None
+        self._device_property: str | None = device_property
 
     @property
     def native_value(self) -> float | None:

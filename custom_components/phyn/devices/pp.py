@@ -1,9 +1,9 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
-from async_timeout import timeout
+from asyncio import Lock, timeout
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -45,6 +45,9 @@ from .base import PhynDevice
 import math
 import time
 
+if TYPE_CHECKING:
+    from ..update_coordinator import PhynDataUpdateCoordinator
+
 WATER_ICON = "mdi:water"
 GAUGE_ICON = "mdi:gauge"
 NAME_DAILY_USAGE = "Daily water usage"
@@ -56,10 +59,14 @@ class PhynPlusDevice(PhynDevice):
     """Phyn device object."""
 
     def __init__(
-        self, coordinator, home_id: str, device_id: str, product_code: str
+        self,
+        coordinator: PhynDataUpdateCoordinator,
+        home_id: str,
+        device_id: str,
+        product_code: str
     ) -> None:
         """Initialize the device."""
-        super().__init__ (coordinator, home_id, device_id, product_code)
+        super().__init__(coordinator, home_id, device_id, product_code)
         self._device_state: dict[str, Any] = {
             "flow_state": {
                 "v": 0.0,
@@ -70,8 +77,9 @@ class PhynPlusDevice(PhynDevice):
         self._away_mode: dict[str, Any] = {}
         self._water_usage: dict[str, Any] = {}
         self._last_known_valve_state: bool = True
-        self._latest_health_test: dict[Str, Any] | None = None
+        self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
+        self._state_lock: Lock = Lock()
 
         self.entities = [
             PhynAutoShutoffModeSwitch(self),
@@ -113,49 +121,54 @@ class PhynPlusDevice(PhynDevice):
             raise UpdateFailed(error) from error
 
     @property
-    def consumption(self) -> float:
+    def consumption(self) -> float | None:
         """Return the current consumption for today in gallons."""
         if "consumption" not in self._rt_device_state:
             return None
-        return self._device_state["consumption"]
+        return self._device_state.get("consumption")
 
     @property
-    def consumption_today(self) -> float:
+    def consumption_today(self) -> float | None:
         """Return the current consumption for today in gallons."""
-        return self._water_usage["water_consumption"]
+        return self._water_usage.get("water_consumption")
 
     @property
-    def current_flow_rate(self) -> float:
+    def current_flow_rate(self) -> float | None:
         """Return current flow rate in gpm."""
-        if "v" not in self._device_state["flow"]:
+        flow = self._device_state.get("flow", {})
+        if "v" not in flow:
             return None
-        return round(self._device_state["flow"]["v"], 3)
+        return round(flow["v"], 3)
 
     @property
     def current_psi(self) -> float:
         """Return the current pressure in psi."""
-        if "v" in self._device_state["pressure"]:
-            return round(self._device_state["pressure"]["v"], 2)
-        return round(self._device_state["pressure"]["mean"], 2)
+        pressure = self._device_state.get("pressure", {})
+        if "v" in pressure:
+            return round(pressure["v"], 2)
+        return round(pressure.get("mean", 0), 2)
 
     @property
     def leak_test_running(self) -> bool:
         """Check if a leak test is running"""
-        return self._device_state["sov_status"]["v"] == "LeakExp"
+        sov_status = self._device_state.get("sov_status", {})
+        return sov_status.get("v") == "LeakExp"
 
     @property
     def temperature(self) -> float:
         """Return the current temperature in degrees F."""
-        if "v" in self._device_state["temperature"]:
-            return round(self._device_state["temperature"]["v"], 2)
-        return round(self._device_state["temperature"]["mean"], 2)
+        temp = self._device_state.get("temperature", {})
+        if "v" in temp:
+            return round(temp["v"], 2)
+        return round(temp.get("mean", 0), 2)
 
     @property
-    def scheduled_leak_test_enabled(self) -> bool:
+    def scheduled_leak_test_enabled(self) -> bool | None:
         """Return if the scheduled leak test is enabled"""
         if "scheduler_enable" not in self._device_preferences:
             return None
-        return self._device_preferences["scheduler_enable"]["value"] == "true"
+        scheduler = self._device_preferences.get("scheduler_enable", {})
+        return scheduler.get("value") == "true"
 
 
     @property
@@ -163,15 +176,16 @@ class PhynPlusDevice(PhynDevice):
         """Return the valve state for the device."""
         if self.valve_changing:
             return self._last_known_valve_state
-        self._last_known_valve_state = self._device_state["sov_status"]["v"] == "Open"
-        return self._device_state["sov_status"]["v"] == "Open"
+        sov_status = self._device_state.get("sov_status", {})
+        return sov_status.get("v") == "Open"
 
     @property
     def valve_changing(self) -> bool:
         """Return the valve changing status"""
-        return self._device_state["sov_status"]["v"] == "Partial"
+        sov_status = self._device_state.get("sov_status", {})
+        return sov_status.get("v") == "Partial"
 
-    async def async_setup(self):
+    async def async_setup(self) -> str:  # type: ignore[override]
         """Setup a new device coordinator"""
         LOGGER.debug("Setting up coordinator")
 
@@ -180,7 +194,7 @@ class PhynPlusDevice(PhynDevice):
         return self._device_state["sov_status"]["v"]
     
     @property
-    def autoshutoff_enabled(self) -> bool:
+    def autoshutoff_enabled(self) -> bool | None:
         """Return True if auto shutoff enabled"""
         if "auto_shutoff_enable" not in self._auto_shutoff:
             return None
@@ -192,7 +206,7 @@ class PhynPlusDevice(PhynDevice):
         self._auto_shutoff["auto_shutoff_enable"] = state
 
     @property
-    def away_mode(self) -> bool:
+    def away_mode(self) -> bool | None:
         """Return True if device is in away mode."""
         if "leak_sensitivity_away_mode" not in self._device_preferences:
             return None
@@ -237,7 +251,7 @@ class PhynPlusDevice(PhynDevice):
             "name": key,
             "value": val
         }]
-        await self._coordinator.api_client.set_device_preferences(self._phyn_device_id, params)
+        await self._coordinator.api_client.device.set_device_preferences(self._phyn_device_id, params)
         self._device_preferences[key]["value"] = val
     
     async def _update_autoshutoff(self, *_) -> None:
@@ -279,51 +293,75 @@ class PhynPlusDevice(PhynDevice):
         latest_test = None
         LOGGER.debug("Health data: %s" % data)
         for test in data['data']:
-            if latest_test == None or latest_test['end_time'] < test['end_time']:
+            if latest_test is None or latest_test['end_time'] < test['end_time']:
                 latest_test = test
         
         self._latest_health_test = latest_test        
 
+    def _update_last_known_valve_state(self) -> None:
+        """Update last known valve state from device state. Must be called within _state_lock."""
+        sov_status = self._device_state.get("sov_status", {})
+        if sov_status.get("v") != "Partial":
+            self._last_known_valve_state = sov_status.get("v") == "Open"
+
+    async def _update_device_state(self, *_) -> None:
+        """Update the device state from the API."""
+        async with self._state_lock:
+            if 'last_updated' not in self._device_state or self._device_state['last_updated'] <= (math.floor(time.time()) - 60):
+                state_data = await self._coordinator.api_client.device.get_state(
+                    self._phyn_device_id
+                )
+                self._device_state.update(state_data)
+                self._device_state['last_updated'] = math.floor(time.time())
+                self._update_last_known_valve_state()
+
     async def on_device_update(self, device_id, data):
         if device_id == self._phyn_device_id:
-            self._rt_device_state = data
+            async with self._state_lock:
+                self._rt_device_state = data
 
-            update_data = {}
-            if "consumption" in data:
-                # Round consumption down to 2 decimal points.
-                update_data.update({"consumption": math.floor(data["consumption"]["v"] * 100) / 100})
-            if "flow" in data:
-                update_data.update({"flow": data["flow"]})
-            if "flow_state" in data:
-                update_data.update({"flow_state": data["flow_state"]})
-            if "sov_state" in data:
-                update_data.update({"sov_status":{"v": data["sov_state"]}})
-            if "sensor_data" in data:
-                if "pressure" in data["sensor_data"]:
-                    update_data.update({"pressure": data["sensor_data"]["pressure"]})
-                if "temperature" in data["sensor_data"]:
-                    update_data.update({"temperature": data["sensor_data"]["temperature"]})
-            self._device_state.update(update_data)
-            self._device_state['last_updated'] = math.floor(time.time())
-            LOGGER.debug("Updating device %s Device State: %s", self._phyn_device_id, self._device_state)
+                update_data = {}
+                if "consumption" in data:
+                    # Round consumption down to 2 decimal points.
+                    update_data.update({"consumption": math.floor(data["consumption"]["v"] * 100) / 100})
+                if "flow" in data:
+                    update_data.update({"flow": data["flow"]})
+                if "flow_state" in data:
+                    update_data.update({"flow_state": data["flow_state"]})
+                if "sov_state" in data:
+                    update_data.update({"sov_status":{"v": data["sov_state"]}})
+                if "sensor_data" in data:
+                    if "pressure" in data["sensor_data"]:
+                        update_data.update({"pressure": data["sensor_data"]["pressure"]})
+                    if "temperature" in data["sensor_data"]:
+                        update_data.update({"temperature": data["sensor_data"]["temperature"]})
+                self._device_state.update(update_data)
+                self._device_state['last_updated'] = math.floor(time.time())
+                self._update_last_known_valve_state()
+                LOGGER.debug("Updating device %s Device State: %s", self._phyn_device_id, self._device_state)
 
             for entity in self.entities:
+                # Skip entities that aren't fully initialized yet
+                if getattr(entity, "hass", None) is None:
+                    continue
                 entity.async_write_ha_state()
 
 class PhynAutoShutoffModeSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__("autoshutoff_enabled", "Autoshutoff Enabled", device)
-        self._preference_name = "autoshutoff_enabled"
+        self._preference_name: str | None = "autoshutoff_enabled"
 
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         return self._device.autoshutoff_enabled
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon to use for the away mode."""
         if self.is_on:
             return "mdi:bag-suitcase"
@@ -342,17 +380,19 @@ class PhynAutoShutoffModeSwitch(PhynSwitchEntity):
 class PhynAwayModeSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__("away_mode", "Away Mode", device)
-        self._preference_name = "leak_sensitivity_away_mode"
+        self._preference_name: str | None = "leak_sensitivity_away_mode"
 
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         return self._device.away_mode
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon to use for the away mode."""
         if self.is_on:
             return "mdi:bag-suitcase"
@@ -365,10 +405,12 @@ class PhynFlowState(PhynEntity, SensorEntity):
     #_attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
     #_attr_device_class = SensorDeviceClass.WATER
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the daily water usage sensor."""
         super().__init__("water_flow_state", "Water Flowing", device)
-        self._state: str = None
+        self._state: str | None = None
 
     @property
     def native_value(self) -> str | None:
@@ -380,7 +422,9 @@ class PhynLeakTestSensor(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the leak test sensor."""
         super().__init__("leak_test_running", "Leak Test Running", device)
 
@@ -392,44 +436,50 @@ class PhynLeakTestWarning(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the leak test warning sensor."""
         super().__init__("leak_test_warning", "Leak Test Warning", device)
 
     @property
-    def is_on(self) -> bool:
-        if self._device._latest_health_test == None:
+    def is_on(self) -> bool | None:
+        if self._device._latest_health_test is None:
             return None
-        return self._device._latest_health_test['is_warn'] == True
+        return self._device._latest_health_test.get('is_warn', False)
 
 class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
     """Leak Test Sensor"""
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the leak test leak sensor."""
         super().__init__("leak_test_leak", "Leak Detected", device)
 
     @property
-    def is_on(self) -> bool:
-        if self._device._latest_health_test == None:
+    def is_on(self) -> bool | None:
+        if self._device._latest_health_test is None:
             return None
-        return self._device._latest_health_test['is_leak'] == True
+        return self._device._latest_health_test.get('is_leak', False)
 
 class PhynScheduledLeakTestEnabledSwitch(PhynSwitchEntity):
     """Switch class for the Phyn Away Mode."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Away Mode switch."""
         super().__init__("scheduled_leak_test_enabled", "Scheduled Leak Test Enabled", device)
-        self._preference_name = "scheduler_enable"
+        self._preference_name: str | None = "scheduler_enable"
     
     @property
-    def _state(self) -> bool:
+    def _state(self) -> bool | None:
         return self._device.scheduled_leak_test_enabled
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon to use for the away mode."""
         if self.is_on:
             return "mdi:bag-suitcase"
@@ -443,10 +493,12 @@ class PhynConsumptionSensor(PhynEntity, SensorEntity):
     _attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
     _attr_device_class = SensorDeviceClass.WATER
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the daily water usage sensor."""
         super().__init__("consumption", "Total Water Usage", device)
-        self._state: float = None
+        self._state: float | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -464,10 +516,12 @@ class PhynCurrentFlowRateSensor(PhynEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
     _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.GALLONS_PER_MINUTE
 
-    def __init__(self, device):
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the flow rate sensor."""
         super().__init__("current_flow_rate", NAME_FLOW_RATE, device)
-        self._state: float = None
+        self._state: float | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -480,7 +534,9 @@ class PhynCurrentFlowRateSensor(PhynEntity, SensorEntity):
 class PhynValve(PhynEntity, ValveEntity):
     """ValveEntity for the Phyn valve."""
 
-    def __init__(self, device) -> None:
+    _device: PhynPlusDevice
+
+    def __init__(self, device: PhynPlusDevice) -> None:
         """Initialize the Phyn Valve."""
         super().__init__("shutoff_valve", "Shutoff valve", device)
         self._attr_supported_features = ValveEntityFeature(ValveEntityFeature.OPEN | ValveEntityFeature.CLOSE)

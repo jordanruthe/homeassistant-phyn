@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
 from aiophyn.errors import RequestError
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -13,7 +15,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     PERCENTAGE,
 )
-from async_timeout import timeout
+from asyncio import timeout
 
 from .base import PhynDevice
 from ..entities.base import (
@@ -25,11 +27,21 @@ from ..entities.base import (
 )
 from ..const import LOGGER
 
+if TYPE_CHECKING:
+    from ..update_coordinator import PhynDataUpdateCoordinator
+
 class PhynWaterSensorDevice(PhynDevice):
     """Phyn Water Sensor Device"""
-    def __init__ (self, coordinator, home_id: str, device_id: str, product_code: str) -> None:
-        self._water_statistics = {}
-        super().__init__ (coordinator, home_id, device_id, product_code)
+    def __init__(
+        self,
+        coordinator: PhynDataUpdateCoordinator,
+        home_id: str,
+        device_id: str,
+        product_code: str
+    ) -> None:
+        """Initialize the Phyn Water Sensor device."""
+        self._water_statistics: dict[str, Any] = {}
+        super().__init__(coordinator, home_id, device_id, product_code)
 
         self.entities = [
             PhynAlertSensor(self, "high_humidity_alert", "High Humidity Alert", "high_humidity"),
@@ -47,21 +59,22 @@ class PhynWaterSensorDevice(PhynDevice):
         """Return battery percentage"""
         if "battery_level" not in self._water_statistics:
             return None
-        return self._water_statistics["battery_level"]
+        return self._water_statistics.get("battery_level")
 
     @property
     def device_name(self) -> str:
         """Return device name."""
         if "name" not in self._device_state:
             return f"{self.manufacturer} {self.model}"
-        return f"{self.manufacturer} {self.model} - {self._device_state['name']}"
+        return f"{self.manufacturer} {self.model} - {self._device_state.get('name', '')}"
 
     @property
     def high_humidity(self) -> bool | None:
         """High humidity detected"""
         key = "high_humidity"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     @property
@@ -69,22 +82,27 @@ class PhynWaterSensorDevice(PhynDevice):
         """Humidity percentage"""
         if "humidity" not in self._water_statistics:
             return None
-        return self._water_statistics["humidity"][0]["value"]
+        humidity_data = self._water_statistics.get("humidity", [])
+        if humidity_data and len(humidity_data) > 0:
+            return humidity_data[0].get("value")
+        return None
 
     @property
     def low_humidity(self) -> bool | None:
         """Low humidity detected"""
         key = "low_humidity"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     @property
     def low_temperature(self) -> bool | None:
         """Low temperature detected"""
         key = "low_temperature"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     @property
@@ -92,14 +110,18 @@ class PhynWaterSensorDevice(PhynDevice):
         """Current temperature"""
         if "temperature" not in self._water_statistics:
             return None
-        return self._water_statistics["temperature"][0]["value"]
+        temperature_data = self._water_statistics.get("temperature", [])
+        if temperature_data and len(temperature_data) > 0:
+            return temperature_data[0].get("value")
+        return None
 
     @property
     def water_detected(self) -> bool | None:
         """Water detected"""
         key = "water"
-        if "alerts" in self._water_statistics and key in self._water_statistics["alerts"]:
-            return self._water_statistics["alerts"][key]
+        alerts = self._water_statistics.get("alerts", {})
+        if key in alerts:
+            return alerts.get(key)
         return None
 
     async def async_update_data(self):
@@ -130,7 +152,7 @@ class PhynWaterSensorDevice(PhynDevice):
             if item is None:
                 item = entry
                 continue
-            if entry['ts'] > item['ts']:
+            if entry.get('ts', 0) > item.get('ts', 0):
                 item = entry
 
         if item:
@@ -138,9 +160,9 @@ class PhynWaterSensorDevice(PhynDevice):
 
         LOGGER.debug("Phyn Water device state (%s): %s", (self._phyn_device_id, self._device_state))
 
-    async def async_setup(self):
+    async def async_setup(self) -> None:
         """Async setup not needed"""
-        return None
+        pass
 
 class PhynBatterySensor(PhynEntity, SensorEntity):
     """Monitors the battery level."""
@@ -149,11 +171,13 @@ class PhynBatterySensor(PhynEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
 
-    def __init__(self, device, name, readable_name):
+    _device: PhynWaterSensorDevice
+
+    def __init__(self, device: PhynWaterSensorDevice, name: str, readable_name: str) -> None:
         """Initialize the battery sensor."""
         super().__init__(name, readable_name, device)
-        self._state: float = None
-        self._device_property = "battery"
+        self._state: float | None = None
+        self._device_property: str = "battery"
 
     @property
     def native_value(self) -> float | None:

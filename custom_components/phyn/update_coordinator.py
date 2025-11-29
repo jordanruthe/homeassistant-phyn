@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiophyn.api import API
 from aiophyn.errors import RequestError
-from async_timeout import timeout
+from asyncio import timeout
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -18,16 +18,19 @@ from .devices.pc import PhynClassicDevice
 from .devices.pp import PhynPlusDevice
 from .devices.pw import PhynWaterSensorDevice
 
-class PhynDataUpdateCoordinator(DataUpdateCoordinator):
+if TYPE_CHECKING:
+    from .devices.base import PhynDevice
+
+class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
     """Update coordinator for Phyn devices"""
     def __init__(
         self, hass: HomeAssistant, api_client: API, 
-        update_interval = timedelta(seconds=60)
+        update_interval: timedelta = timedelta(seconds=60)
     ) -> None:
         """Initialize the device."""
         self.hass: HomeAssistant = hass
         self.api_client: API = api_client
-        self._devices = []
+        self._devices: list[PhynDevice] = []
 
         super().__init__(
             hass,
@@ -36,7 +39,8 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
     
-    def add_device(self, home_id, device_id, product_code):
+    def add_device(self, home_id: str, device_id: str, product_code: str) -> None:
+        """Add a device to the coordinator."""
         if product_code in ["PP1","PP2"]:
             self._devices.append(
                 PhynPlusDevice(self, home_id, device_id, product_code)
@@ -51,10 +55,11 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
     @property
-    def devices(self) -> list:
+    def devices(self) -> list[PhynDevice]:
+        """Return list of devices."""
         return self._devices
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> None:
         """Update data via library."""
         for device in self._devices:
             try:
@@ -63,7 +68,7 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator):
             except (RequestError) as error:
                 raise UpdateFailed(error) from error
     
-    async def async_setup(self):
+    async def async_setup(self) -> None:
+        """Setup devices."""
         for device in self._devices:
             await device.async_setup()
-        return None

@@ -73,24 +73,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Phyn homes: %s", homes)
 
-    #try:
-    await client.mqtt.connect()
-    #except:
-    #    raise HaCannotConnect("Unknown MQTT connection failure")
+    try:
+        await client.mqtt.connect()
 
-    coordinator = PhynDataUpdateCoordinator(hass, client)
-    for home in homes:
-        for device in home["devices"]:
-            coordinator.add_device(home["id"], device["device_id"], device["product_code"])
-    hass.data[DOMAIN]["coordinator"] = coordinator
+        coordinator = PhynDataUpdateCoordinator(hass, client)
+        for home in homes:
+            for device in home["devices"]:
+                coordinator.add_device(home["id"], device["device_id"], device["product_code"])
+        hass.data[DOMAIN]["coordinator"] = coordinator
 
-    await coordinator.async_refresh()
-    await coordinator.async_setup()
+        await coordinator.async_refresh()
+        await coordinator.async_setup()
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await phyn_leak_test_service_setup(hass)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await phyn_leak_test_service_setup(hass)
 
-    return True
+        return True
+    except Exception:
+        # Ensure MQTT is disconnected on any setup failure to avoid leaking
+        # open connections across repeated failed setups.
+        try:
+            await client.mqtt.disconnect_and_wait()
+        except Exception as err:
+            _LOGGER.debug("Error disconnecting MQTT after setup failure: %s", err)
+        raise
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
