@@ -19,7 +19,7 @@ This custom component can be integrated into [HACS](https://github.com/hacs/inte
 
 3. Click the three dots in the upper right-hand corner and select _Custom Repositories_.
 
-4. Paste "https://github.com/helicopterrun/homeassistant-phyn" into _Repository_, select "Integration" as _Category_, and click Add.
+4. Paste "https://github.com/jordanruthe/homeassistant-phyn" into _Repository_, select "Integration" as _Category_, and click Add.
 
 5. Close the Custom repositories dialog after it updates with the new integration.
 
