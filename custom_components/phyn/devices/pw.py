@@ -145,7 +145,7 @@ class PhynWaterSensorDevice(PhynDevice):
         to_ts = int(datetime.timestamp(datetime.now()) * 1000)
         from_ts = to_ts - (3600 * 72 * 1000)
         data = await self._coordinator.api_client.device.get_water_statistics(self._phyn_device_id, from_ts, to_ts)
-        LOGGER.debug("PW1 data (%s): %s", (self._phyn_device_id, data))
+        LOGGER.debug("PW1 data (%s): %s", self._phyn_device_id, data)
 
         item = None
         for entry in data:
@@ -158,7 +158,7 @@ class PhynWaterSensorDevice(PhynDevice):
         if item:
             self._water_statistics.update(item)
 
-        LOGGER.debug("Phyn Water device state (%s): %s", (self._phyn_device_id, self._device_state))
+        LOGGER.debug("Phyn Water device state (%s): %s", self._phyn_device_id, self._device_state)
 
     async def async_setup(self) -> None:
         """Async setup not needed"""

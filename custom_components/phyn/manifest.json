@@ -8,7 +8,7 @@
   "issue_tracker": "https://github.com/jordanruthe/homeassistant-phyn/issues",
   "loggers": ["custom_components.phyn","aiophyn"],
   "requirements": [
-    "aiophyn>=2025.10.1"
+    "aiophyn>=2025.11.1"
   ],
-  "version": "2025.10.1"
+  "version": "2025.11.1"
 }
