@@ -9,6 +9,7 @@ coverage.xml
 htmlcov/
 *.pyc
 *.pyo
+*.sh
 
 # Build artifacts
 *.egg-info/

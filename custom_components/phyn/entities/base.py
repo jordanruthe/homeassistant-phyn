@@ -20,7 +20,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.update import (
     UpdateDeviceClass,
     UpdateEntity,
-    UpdateEntityFeature
+    UpdateEntityFeature,
 )
 from homeassistant.const import (
     PERCENTAGE,
@@ -181,10 +181,10 @@ class PhynFirmwareUpdateAvailableSensor(PhynEntity, BinarySensorEntity):
         return self._device.firmware_has_update
 
 class PhynFirwmwareUpdateEntity(PhynEntity, UpdateEntity):
-    """Update entity for Phyn Plus"""
+    """Update entity for Phyn devices (read-only — install not supported)."""
 
     _attr_device_class = UpdateDeviceClass.FIRMWARE
-    _attr_supported_features = UpdateEntityFeature.INSTALL | UpdateEntityFeature.RELEASE_NOTES
+    _attr_supported_features = UpdateEntityFeature.RELEASE_NOTES
 
     def __init__(self, device: PhynDevice) -> None:
         """Initialize Firmware Update Entity."""
@@ -202,11 +202,9 @@ class PhynFirwmwareUpdateEntity(PhynEntity, UpdateEntity):
     def release_url(self) -> str | None:
         return self._device.firmware_release_url
 
-    async def async_install(self, **kwargs: Any) -> None:
-        return None
-
     def release_notes(self) -> str | None:
-        return "Upgrade can take up to five minutes"
+        return "Firmware updates must be performed through the Phyn app."
+
 
 class PhynSwitchEntity(PhynEntity, SwitchEntity):
     """Switch class for the Phyn Away Mode."""
