@@ -19,6 +19,7 @@ from asyncio import timeout
 
 from .base import PhynDevice
 from ..entities.base import (
+    PhynAlertEvent,
     PhynEntity,
     PhynAlertSensor,
     PhynFirwmwareUpdateEntity,
@@ -44,6 +45,7 @@ class PhynWaterSensorDevice(PhynDevice):
         super().__init__(coordinator, home_id, device_id, product_code)
 
         self.entities = [
+            PhynAlertEvent(self),
             PhynAlertSensor(self, "high_humidity_alert", "High Humidity Alert", "high_humidity"),
             PhynAlertSensor(self, "low_humidity_alert", "Low Humidity Alert", "low_humidity"),
             PhynAlertSensor(self, "low_temperature_alert", "Low Temperature Alert", "low_temperature"),
@@ -131,6 +133,7 @@ class PhynWaterSensorDevice(PhynDevice):
                 if "product_code" not in self._device_state:
                     await self._update_device_state()
                 await self._update_device()
+                await self._update_alert_events()
 
                 #Update every hour
                 if self._update_count % 60 == 0:

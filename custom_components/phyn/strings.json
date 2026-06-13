@@ -18,6 +18,17 @@
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Phyn Alert Options",
+        "description": "Choose which alert types should be suppressed and never fire an HA event.",
+        "data": {
+          "excluded_alert_types": "Suppress these alert types"
+        }
+      }
+    }
+  },
   "exceptions": {
     "auth_failed": {
       "message": "Authentication failed. Please reauthenticate."

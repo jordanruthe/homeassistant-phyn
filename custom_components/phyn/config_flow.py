@@ -7,8 +7,9 @@ import voluptuous as vol
 from homeassistant import config_entries, core, exceptions
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import homeassistant.helpers.config_validation as cv
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, ALL_ALERT_TYPES, CONF_EXCLUDED_ALERT_TYPES
 
 BRANDS = ["Phyn", "Kohler"]
 
@@ -47,6 +48,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     MINOR_VERSION = 2
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        """Return the options flow handler."""
+        return PhynOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -132,3 +138,28 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class CannotConnect(exceptions.HomeAssistantError):
     """Error to indicate we cannot connect."""
+
+
+class PhynOptionsFlow(config_entries.OptionsFlow):
+    """Handle Phyn integration options (e.g. suppressed alert types)."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_excluded = self._config_entry.options.get(CONF_EXCLUDED_ALERT_TYPES, [])
+
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_EXCLUDED_ALERT_TYPES,
+                    default=current_excluded,
+                ): cv.multi_select(ALL_ALERT_TYPES),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

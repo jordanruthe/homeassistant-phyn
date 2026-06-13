@@ -8,6 +8,7 @@ from aiophyn.api import API
 from aiophyn.errors import RequestError
 from asyncio import timeout
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -24,12 +25,16 @@ if TYPE_CHECKING:
 class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
     """Update coordinator for Phyn devices"""
     def __init__(
-        self, hass: HomeAssistant, api_client: API, 
-        update_interval: timedelta = timedelta(seconds=60)
+        self,
+        hass: HomeAssistant,
+        api_client: API,
+        config_entry: ConfigEntry,
+        update_interval: timedelta = timedelta(seconds=60),
     ) -> None:
         """Initialize the device."""
         self.hass: HomeAssistant = hass
         self.api_client: API = api_client
+        self.config_entry: ConfigEntry = config_entry
         self._devices: list[PhynDevice] = []
 
         super().__init__(

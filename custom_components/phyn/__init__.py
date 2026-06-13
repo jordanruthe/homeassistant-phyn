@@ -22,7 +22,7 @@ from .services import phyn_leak_test_service_setup
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH, Platform.UPDATE, Platform.VALVE]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.EVENT, Platform.SENSOR, Platform.SWITCH, Platform.UPDATE, Platform.VALVE]
 
 async def async_migrate_entry(hass, config_entry: ConfigEntry):
     """Migrate old entry."""
@@ -76,7 +76,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await client.mqtt.connect()
 
-        coordinator = PhynDataUpdateCoordinator(hass, client)
+        coordinator = PhynDataUpdateCoordinator(hass, client, entry)
         for home in homes:
             for device in home["devices"]:
                 coordinator.add_device(home["id"], device["device_id"], device["product_code"])

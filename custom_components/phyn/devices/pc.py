@@ -30,6 +30,8 @@ import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
 from ..entities.base import (
+    PhynAlertEvent,
+    PhynAlertSensor,
     PhynDailyUsageSensor,
     PhynFirmwareUpdateAvailableSensor,
     PhynFirwmwareUpdateEntity,
@@ -62,6 +64,15 @@ class PhynClassicDevice(PhynDevice):
         self._last_known_valve_state: bool = True
 
         self.entities = [
+            PhynAlertEvent(self),
+            PhynAlertSensor(self, "alert_battery", "Battery Alert", "alert_battery"),
+            PhynAlertSensor(self, "alert_freeze_warn", "Freeze Warning Alert", "alert_freeze_warn"),
+            PhynAlertSensor(self, "alert_high_pressure", "High Pressure Alert", "alert_high_pressure"),
+            PhynAlertSensor(self, "alert_leak", "Leak Alert", "alert_leak"),
+            PhynAlertSensor(self, "alert_offline_leak", "Offline Leak Shutoff Alert", "alert_offline_leak"),
+            PhynAlertSensor(self, "alert_periodic_leak", "Recurring Flow Alert", "alert_periodic_leak"),
+            PhynAlertSensor(self, "alert_pinhole_leak", "Pinhole Leak Alert", "alert_pinhole_leak"),
+            PhynAlertSensor(self, "alert_temperature", "Temperature Alert", "alert_temperature"),
             PhynDailyUsageSensor(self),
             PhynFirmwareUpdateAvailableSensor(self),
             PhynFirwmwareUpdateEntity(self),
@@ -76,6 +87,8 @@ class PhynClassicDevice(PhynDevice):
         try:
             async with timeout(20):
                 await self._update_device_state()
+                await self._update_alerts()
+                await self._update_alert_events()
                 await self._update_consumption_data()
 
                 #Update every hour
@@ -85,6 +98,38 @@ class PhynClassicDevice(PhynDevice):
                 self._update_count += 1
         except (RequestError) as error:
             raise UpdateFailed(error) from error
+
+    @property
+    def alert_battery(self) -> bool:
+        return self.has_active_alert("battery")
+
+    @property
+    def alert_freeze_warn(self) -> bool:
+        return self.has_active_alert("freeze_warn")
+
+    @property
+    def alert_high_pressure(self) -> bool:
+        return self.has_active_alert("high_pressure")
+
+    @property
+    def alert_leak(self) -> bool:
+        return self.has_active_alert("leak")
+
+    @property
+    def alert_offline_leak(self) -> bool:
+        return self.has_active_alert("offline_leak")
+
+    @property
+    def alert_periodic_leak(self) -> bool:
+        return self.has_active_alert("periodic_leak")
+
+    @property
+    def alert_pinhole_leak(self) -> bool:
+        return self.has_active_alert("pinhole_leak")
+
+    @property
+    def alert_temperature(self) -> bool:
+        return self.has_active_alert("temperature")
 
     @property
     def cold_line_num(self) -> int | None:

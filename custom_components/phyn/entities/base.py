@@ -10,6 +10,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.components.event import EventEntity
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -28,7 +29,7 @@ from homeassistant.const import (
     UnitOfVolume,
 )
 
-from ..const import DOMAIN as PHYN_DOMAIN
+from ..const import DOMAIN as PHYN_DOMAIN, ALL_ALERT_TYPES, LOGGER
 
 if TYPE_CHECKING:
     from ..devices.base import PhynDevice
@@ -106,6 +107,46 @@ class PhynAlertSensor(PhynEntity, BinarySensorEntity):
         if self._device_property is not None and hasattr(self._device, self._device_property):
             return getattr(self._device, self._device_property)
         return None
+
+class PhynAlertEvent(PhynEntity, EventEntity):
+    """HA event entity that fires once for each new Phyn alert.
+
+    Automations can trigger on this entity (platform: event, event_type: leak,
+    etc.) to drive mobile-app notifications, TTS, or any other action.
+    Unwanted alert types (e.g. temperature, humidity) can be suppressed via the
+    integration's Configure dialog so they never reach this entity.
+    """
+
+    _attr_event_types: list[str] = list(ALL_ALERT_TYPES.keys())
+
+    def __init__(self, device: PhynDevice) -> None:
+        """Initialize the alert event entity."""
+        super().__init__("alert_event", "Alert", device)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to new alerts from the device when added to HA."""
+        self.async_on_remove(
+            self._device.add_alert_listener(self._handle_alert)
+        )
+
+    def _handle_alert(self, alert: dict) -> None:
+        """Receive a new alert dict from the device and fire the HA event."""
+        alert_type = alert.get("type", "")
+        if alert_type not in self._attr_event_types:
+            LOGGER.warning(
+                "Phyn: unknown alert type %r received — update ALL_ALERT_TYPES in const.py",
+                alert_type,
+            )
+            return
+        self._trigger_event(
+            alert_type,
+            {
+                "alert_id": alert.get("id"),
+                "message": alert.get("message") or alert.get("display_message") or "",
+            },
+        )
+        self.async_write_ha_state()
+
 
 class PhynDailyUsageSensor(PhynEntity, SensorEntity):
     """Monitors the daily water usage."""
