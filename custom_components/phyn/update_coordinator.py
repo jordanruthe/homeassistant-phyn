@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+MQTT_DOWN_RELOAD_THRESHOLD = 10
+
 from aiophyn.api import API
 from aiophyn.errors import RequestError
 from asyncio import timeout
@@ -40,6 +42,8 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
         self._devices: list[PhynDevice] = []
         self._alert_active_summary: dict = {}
         self._alert_latest_by_home: dict[str, list[dict]] = {}
+        self._mqtt_down_cycles: int = 0
+        self._reload_in_progress: bool = False
 
         super().__init__(
             hass,
@@ -95,6 +99,34 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
                     await device.async_update_data()
             except (RequestError) as error:
                 raise UpdateFailed(error) from error
+
+        # As a last-resort, reload the config entry to rebuild the MQTT client from 
+        # scratch. 
+        # The threshold is intentionally high (~10 min at 60s intervals) because the
+        # reconnect loop should recover on its own well before this fires.
+        mqtt = self.api_client.mqtt
+        if mqtt.topics and not mqtt.is_connected():
+            self._mqtt_down_cycles += 1
+            LOGGER.warning(
+                "Phyn MQTT disconnected while API is reachable (%s/%s cycles)",
+                self._mqtt_down_cycles,
+                MQTT_DOWN_RELOAD_THRESHOLD,
+            )
+            if (
+                self._mqtt_down_cycles >= MQTT_DOWN_RELOAD_THRESHOLD
+                and not self._reload_in_progress
+            ):
+                self._reload_in_progress = True
+                LOGGER.warning(
+                    "Reloading Phyn integration to recover MQTT connection"
+                )
+                self.hass.async_create_task(
+                    self.hass.config_entries.async_reload(
+                        self.config_entry.entry_id
+                    )
+                )
+        else:
+            self._mqtt_down_cycles = 0
     
     async def async_setup(self) -> None:
         """Setup devices."""
