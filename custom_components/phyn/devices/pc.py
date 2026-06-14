@@ -46,6 +46,17 @@ if TYPE_CHECKING:
 class PhynClassicDevice(PhynDevice):
     """Phyn device object."""
 
+    ALERT_EVENT_TYPES: list[str] = [
+        "battery",
+        "freeze_warn",
+        "high_pressure",
+        "leak",
+        "offline_leak",
+        "periodic_leak",
+        "pinhole_leak",
+        "temperature",
+    ]
+
     def __init__(
         self,
         coordinator: PhynDataUpdateCoordinator,

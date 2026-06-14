@@ -12,6 +12,12 @@ if TYPE_CHECKING:
 
 class PhynDevice:
     """Generic Phyn Device"""
+
+    #: Alert types (Phyn API vocabulary) that this device model can emit.
+    #: Subclasses override this to declare which types they care about so the
+    #: coordinator can request only the relevant union per home.
+    ALERT_EVENT_TYPES: list[str] = []
+
     def __init__(
         self,
         coordinator: PhynDataUpdateCoordinator,
@@ -130,11 +136,10 @@ class PhynDevice:
         return self._active_alerts.get(alert_type, 0) > 0
 
     def has_ongoing_alert(self, alert_type: str) -> bool:
-        """Return True if an active/ongoing alert of the given type is present
-        in the most recently fetched alerts for this device.
-
-        Uses ``_latest_device_alerts`` populated by ``_update_alert_events``.
-        Handles both ``alert_type`` (PW1 API shape) and ``type`` field names.
+        """Return True if an ongoing alert of the given type exists in the most
+        recently fetched alerts.  Checks ``ongoing: True`` or ``active: "Y"``
+        so it catches alerts that have been read/acknowledged in the Phyn app
+        but whose underlying condition (e.g. low battery) is still present.
         """
         for alert in self._latest_device_alerts:
             a_type = alert.get("alert_type") or alert.get("type")
@@ -176,18 +181,14 @@ class PhynDevice:
         )
 
         alerts: list[dict] = self._coordinator._alert_latest_by_home.get(self._phyn_home_id, [])
-        LOGGER.debug("Latest alerts (home %s): %s", self._phyn_home_id, alerts)
+        LOGGER.debug("Latest alerts (home %s): %d", self._phyn_home_id, len(alerts))
 
         # Filter to alerts that belong to this device.
-        # The Phyn API returns a list of dicts — field names are confirmed via
-        # the debug log above on first run; common candidates: "id", "device_id",
-        # "type", "message", "created_at".
         device_alerts = [
             a for a in alerts
             if a.get("device_id") == self._phyn_device_id
         ]
 
-        # Keep the latest snapshot so has_ongoing_alert() can query current state.
         self._latest_device_alerts = device_alerts
 
         if not self._alert_seed_done:
