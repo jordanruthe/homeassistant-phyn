@@ -46,6 +46,7 @@ class PhynWaterSensorDevice(PhynDevice):
 
         self.entities = [
             PhynAlertEvent(self),
+            PhynAlertSensor(self, "battery_alert", "Low Battery Alert", "alert_battery"),
             PhynAlertSensor(self, "high_humidity_alert", "High Humidity Alert", "high_humidity"),
             PhynAlertSensor(self, "low_humidity_alert", "Low Humidity Alert", "low_humidity"),
             PhynAlertSensor(self, "low_temperature_alert", "Low Temperature Alert", "low_temperature"),
@@ -55,6 +56,11 @@ class PhynWaterSensorDevice(PhynDevice):
             PhynHumiditySensor(self, "humidity","Humidity"),
             PhynTemperatureSensor(self,"air_temperature","Air Temperature"),
         ]
+
+    @property
+    def alert_battery(self) -> bool:
+        """Return True when the Phyn API reports an active low-battery alert."""
+        return self.has_ongoing_alert("battery")
 
     @property
     def battery(self) -> int | None:

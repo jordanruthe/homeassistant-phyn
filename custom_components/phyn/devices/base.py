@@ -29,6 +29,7 @@ class PhynDevice:
         self._device_preferences: dict[str, dict[str, Any]] = {}
         self._firmware_info: dict[str, Any] = {}
         self._active_alerts: dict[str, int] = {}
+        self._latest_device_alerts: list[dict] = []
         self._update_count: int = 0
         self._alert_listeners: list[Callable[[dict], None]] = []
         self._seen_alert_ids: set[str] = set()
@@ -128,6 +129,21 @@ class PhynDevice:
         """Return True if the given alert type is currently active."""
         return self._active_alerts.get(alert_type, 0) > 0
 
+    def has_ongoing_alert(self, alert_type: str) -> bool:
+        """Return True if an active/ongoing alert of the given type is present
+        in the most recently fetched alerts for this device.
+
+        Uses ``_latest_device_alerts`` populated by ``_update_alert_events``.
+        Handles both ``alert_type`` (PW1 API shape) and ``type`` field names.
+        """
+        for alert in self._latest_device_alerts:
+            a_type = alert.get("alert_type") or alert.get("type")
+            if a_type != alert_type:
+                continue
+            if alert.get("active") == "Y" or alert.get("ongoing") is True:
+                return True
+        return False
+
     def add_alert_listener(self, cb: Callable[[dict], None]) -> Callable[[], None]:
         """Register a callback invoked for each new (unseen, non-excluded) alert.
 
@@ -142,11 +158,8 @@ class PhynDevice:
         return remove
 
     async def _update_alerts(self, *_) -> None:
-        """Fetch active alerts for this device from the API."""
-        data = await self._coordinator.api_client.alert.get_active_summary(
-            self._coordinator.api_client.username
-        )
-        self._active_alerts = data.get(self._phyn_device_id, {})
+        """Read active alerts for this device from the coordinator's cached summary."""
+        self._active_alerts = self._coordinator._alert_active_summary.get(self._phyn_device_id, {})
         LOGGER.debug("Active alerts for %s: %s", self._phyn_device_id, self._active_alerts)
 
     async def _update_alert_events(self, *_) -> None:
@@ -162,18 +175,7 @@ class PhynDevice:
             self._coordinator.config_entry.options.get(CONF_EXCLUDED_ALERT_TYPES, [])
         )
 
-        try:
-            from aiophyn.alert import Alert as PhynAlert
-            alerts: list[dict] = await self._coordinator.api_client.alert.get_latest(
-                self._coordinator.api_client.username,
-                self._phyn_home_id,
-                alert_type=PhynAlert.ALERT_TYPES,
-                limit=50,
-            )
-        except Exception as err:  # noqa: BLE001
-            LOGGER.warning("Could not fetch latest alerts for %s: %s", self._phyn_device_id, err)
-            return
-
+        alerts: list[dict] = self._coordinator._alert_latest_by_home.get(self._phyn_home_id, [])
         LOGGER.debug("Latest alerts (home %s): %s", self._phyn_home_id, alerts)
 
         # Filter to alerts that belong to this device.
@@ -184,6 +186,9 @@ class PhynDevice:
             a for a in alerts
             if a.get("device_id") == self._phyn_device_id
         ]
+
+        # Keep the latest snapshot so has_ongoing_alert() can query current state.
+        self._latest_device_alerts = device_alerts
 
         if not self._alert_seed_done:
             # Record all current IDs so we don't replay history on restart.
@@ -205,7 +210,7 @@ class PhynDevice:
                 continue
             self._seen_alert_ids.add(alert_id)
 
-            alert_type = alert.get("type", "")
+            alert_type = alert.get("alert_type") or alert.get("type") or ""
             if alert_type in excluded:
                 LOGGER.debug("Skipping excluded alert type %r for %s", alert_type, self._phyn_device_id)
                 continue

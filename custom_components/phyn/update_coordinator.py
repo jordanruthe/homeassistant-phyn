@@ -12,6 +12,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from aiophyn.alert import Alert as PhynAlert
+
 from .const import DOMAIN as PHYN_DOMAIN, LOGGER
 
 
@@ -36,6 +38,8 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
         self.api_client: API = api_client
         self.config_entry: ConfigEntry = config_entry
         self._devices: list[PhynDevice] = []
+        self._alert_active_summary: dict = {}
+        self._alert_latest_by_home: dict[str, list[dict]] = {}
 
         super().__init__(
             hass,
@@ -66,6 +70,25 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
 
     async def _async_update_data(self) -> None:
         """Update data via library."""
+        try:
+            self._alert_active_summary = await self.api_client.alert.get_active_summary(
+                self.api_client.username
+            )
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Could not fetch alert active summary: %s", err)
+
+        home_ids = {device.home_id for device in self._devices}
+        for home_id in home_ids:
+            try:
+                self._alert_latest_by_home[home_id] = await self.api_client.alert.get_latest(
+                    self.api_client.username,
+                    home_id,
+                    alert_type=PhynAlert.ALERT_TYPES,
+                    limit=50,
+                )
+            except Exception as err:  # noqa: BLE001
+                LOGGER.warning("Could not fetch latest alerts for home %s: %s", home_id, err)
+
         for device in self._devices:
             try:
                 async with timeout(20):

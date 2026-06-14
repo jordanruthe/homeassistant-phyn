@@ -131,7 +131,7 @@ class PhynAlertEvent(PhynEntity, EventEntity):
 
     def _handle_alert(self, alert: dict) -> None:
         """Receive a new alert dict from the device and fire the HA event."""
-        alert_type = alert.get("type", "")
+        alert_type = alert.get("alert_type") or alert.get("type") or ""
         if alert_type not in self._attr_event_types:
             LOGGER.warning(
                 "Phyn: unknown alert type %r received — update ALL_ALERT_TYPES in const.py",
