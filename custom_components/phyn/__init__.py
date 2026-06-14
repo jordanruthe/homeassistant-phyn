@@ -3,7 +3,7 @@ import asyncio
 import logging
 
 from aiophyn import async_get_api
-from aiophyn.errors import RequestError
+from aiophyn.errors import AuthenticationError, RequestError
 from botocore.exceptions import ClientError
 
 from homeassistant.config_entries import ConfigEntry
@@ -62,6 +62,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             phyn_brand="phyn", session=session,
             client_id=client_id
         )
+    except AuthenticationError as error:
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN,
+            translation_key="auth_failed",
+        ) from error
     except RequestError as error:
         raise ConfigEntryNotReady from error
     except ClientError as error:

@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING, Any
 MQTT_DOWN_RELOAD_THRESHOLD = 10
 
 from aiophyn.api import API
-from aiophyn.errors import RequestError
+from aiophyn.errors import AuthenticationError, RequestError
 from asyncio import timeout
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from aiophyn.alert import Alert as PhynAlert
@@ -78,6 +79,8 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
             self._alert_active_summary = await self.api_client.alert.get_active_summary(
                 self.api_client.username
             )
+        except AuthenticationError:
+            raise
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Could not fetch alert active summary: %s", err)
 
@@ -90,6 +93,8 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
                     alert_type=PhynAlert.ALERT_TYPES,
                     limit=50,
                 )
+            except AuthenticationError:
+                raise
             except Exception as err:  # noqa: BLE001
                 LOGGER.warning("Could not fetch latest alerts for home %s: %s", home_id, err)
 
@@ -97,6 +102,11 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
             try:
                 async with timeout(20):
                     await device.async_update_data()
+            except AuthenticationError as error:
+                raise ConfigEntryAuthFailed(
+                    translation_domain="phyn",
+                    translation_key="auth_failed",
+                ) from error
             except (RequestError) as error:
                 raise UpdateFailed(error) from error
 
