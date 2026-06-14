@@ -9,13 +9,15 @@ from botocore.exceptions import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, issue_registry as ir
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
-    ConfigEntryNotReady
+    ConfigEntryError,
+    ConfigEntryNotReady,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CLIENT, DOMAIN
+from .const import CLIENT, DOMAIN, CONF_HOME_ID, CONF_DEVICE_IDS
 from .update_coordinator import PhynDataUpdateCoordinator
 from .exceptions import HaAuthError, HaCannotConnect
 from .services import phyn_leak_test_service_setup
@@ -29,18 +31,20 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
     _LOGGER.debug("Migrating from version %s.%s", config_entry.version, config_entry.minor_version)
 
     if config_entry.version > 1:
-      # This means the user has downgraded from a future version
-      return False
+        # This means the user has downgraded from a future version
+        return False
 
     if config_entry.version == 1:
         new = {**config_entry.data}
-        if config_entry.minor_version < 2:
-            if "Brand" not in new:
-                new['Brand'] = "phyn"
+        if config_entry.minor_version < 3:
+            # Remove the now-obsolete Brand field.
+            new.pop("Brand", None)
+            # home_id and device_ids will be resolved in async_setup_entry
+            # once the API client is available.
 
-        config_entry.version = 1
-        config_entry.minor_version = 2
-        hass.config_entries.async_update_entry(config_entry, data=new)
+        hass.config_entries.async_update_entry(
+            config_entry, data=new, version=1, minor_version=3
+        )
 
     _LOGGER.debug("Migration to version %s.%s successful", config_entry.version, config_entry.minor_version)
 
@@ -55,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         hass.data[DOMAIN][CLIENT] = client = await async_get_api(
             entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD],
-            phyn_brand=entry.data["Brand"].lower(), session=session,
+            phyn_brand="phyn", session=session,
             client_id=client_id
         )
     except RequestError as error:
@@ -73,13 +77,57 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Phyn homes: %s", homes)
 
+    # --- Resolve home and device selection ---
+    home_id = entry.data.get(CONF_HOME_ID)
+    device_ids = entry.data.get(CONF_DEVICE_IDS)
+
+    if home_id is None:
+        # Legacy entry that hasn't been through the new flow yet.
+        if len(homes) == 1:
+            # Safe to auto-migrate: use the single home and all its devices.
+            home_id = homes[0]["id"]
+            device_ids = [d["device_id"] for d in homes[0].get("devices", [])]
+            hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_HOME_ID: home_id, CONF_DEVICE_IDS: device_ids},
+            )
+            _LOGGER.debug("Auto-migrated single home %s with devices %s", home_id, device_ids)
+        else:
+            # Multiple homes — the user must pick one via reconfigure.
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                "reconfigure_required",
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="reconfigure_required",
+            )
+            raise ConfigEntryError(
+                "Your Phyn account has multiple homes. Please reconfigure the integration to select a home."
+            )
+
+    ir.async_delete_issue(hass, DOMAIN, "reconfigure_required")
+
+    selected_home = next((h for h in homes if h["id"] == home_id), None)
+    if selected_home is None:
+        _LOGGER.error("Configured home %s not found in account homes", home_id)
+        raise ConfigEntryNotReady("Configured home not found")
+
+    # Remove any devices from a previous setup that are no longer selected.
+    device_registry = dr.async_get(hass)
+    for dev_entry in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        phyn_ids = {identifier[1] for identifier in dev_entry.identifiers if identifier[0] == DOMAIN}
+        if phyn_ids and not phyn_ids.intersection(device_ids):
+            device_registry.async_remove_device(dev_entry.id)
+            _LOGGER.debug("Removed stale device %s", phyn_ids)
+
     try:
         await client.mqtt.connect()
 
         coordinator = PhynDataUpdateCoordinator(hass, client, entry)
-        for home in homes:
-            for device in home["devices"]:
-                coordinator.add_device(home["id"], device["device_id"], device["product_code"])
+        for device in selected_home.get("devices", []):
+            if device["device_id"] in device_ids:
+                coordinator.add_device(home_id, device["device_id"], device["product_code"])
         hass.data[DOMAIN]["coordinator"] = coordinator
 
         await coordinator.async_refresh()

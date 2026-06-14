@@ -1,11 +1,13 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "Device is already configured",
+            "reconfigure_successful": "Phyn was reconfigured successfully."
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
+            "no_devices_selected": "At least one device must be selected.",
             "unknown": "Unexpected error"
         },
         "step": {
@@ -15,7 +17,52 @@
                     "password": "Password",
                     "username": "Username"
                 }
+            },
+            "home": {
+                "title": "Select Home",
+                "description": "Your account has multiple homes. Select the home you want to set up.",
+                "data": {
+                    "home_id": "Home"
+                }
+            },
+            "device": {
+                "title": "Select Devices",
+                "description": "Choose which devices to import into Home Assistant. At least one device must be selected.",
+                "data": {
+                    "device_ids": "Devices"
+                }
+            },
+            "reconfigure": {
+                "data": {
+                    "username": "Username",
+                    "password": "Password"
+                }
+            },
+            "reconfigure_home": {
+                "title": "Select Home",
+                "description": "Your account has multiple homes. Select the home you want to use.",
+                "data": {
+                    "home_id": "Home"
+                }
+            },
+            "reconfigure_device": {
+                "title": "Select Devices",
+                "description": "Choose which devices to import into Home Assistant. At least one device must be selected.",
+                "data": {
+                    "device_ids": "Devices"
+                }
             }
+        }
+    },
+    "exceptions": {
+        "auth_failed": {
+            "message": "Authentication failed. Please reauthenticate."
+        }
+    },
+    "issues": {
+        "reconfigure_required": {
+            "title": "Phyn reconfiguration required",
+            "description": "Your Phyn account has multiple homes but no home has been selected. Go to Settings → Devices & Services → Phyn and click **Reconfigure** to choose which home to use."
         }
     },
     "options": {

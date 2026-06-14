@@ -26,3 +26,5 @@ ALL_ALERT_TYPES: dict[str, str] = {
 }
 
 CONF_EXCLUDED_ALERT_TYPES = "excluded_alert_types"
+CONF_HOME_ID = "home_id"
+CONF_DEVICE_IDS = "device_ids"

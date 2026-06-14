@@ -7,26 +7,68 @@
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]"
         }
+      },
+      "home": {
+        "title": "Select Home",
+        "description": "Your account has multiple homes. Select the home you want to set up.",
+        "data": {
+          "home_id": "Home"
+        }
+      },
+      "device": {
+        "title": "Select Devices",
+        "description": "Choose which devices to import into Home Assistant. At least one device must be selected.",
+        "data": {
+          "device_ids": "Devices"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]"
+        }
+      },
+      "reconfigure_home": {
+        "title": "[%key:component::phyn::config::step::home::title%]",
+        "description": "Your account has multiple homes. Select the home you want to use.",
+        "data": {
+          "home_id": "[%key:component::phyn::config::step::home::data::home_id%]"
+        }
+      },
+      "reconfigure_device": {
+        "title": "[%key:component::phyn::config::step::device::title%]",
+        "description": "[%key:component::phyn::config::step::device::description%]",
+        "data": {
+          "device_ids": "[%key:component::phyn::config::step::device::data::device_ids%]"
+        }
       }
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "no_devices_selected": "At least one device must be selected.",
       "unknown": "[%key:common::config_flow::error::unknown%]"
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "reconfigure_successful": "Phyn was reconfigured successfully."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Phyn Alert Options",
-        "description": "Choose which alert types should be suppressed and never fire an HA event.",
+        "description": "Choose which alert types should be suppressed and never fire a Home Assistant event.",
         "data": {
           "excluded_alert_types": "Suppress these alert types"
         }
       }
+    }
+  },
+  "issues": {
+    "reconfigure_required": {
+      "title": "Phyn reconfiguration required",
+      "description": "Your Phyn account has multiple homes but no home has been selected. Go to Settings → Devices & Services → Phyn and click **Reconfigure** to choose which home to use."
     }
   },
   "exceptions": {
