@@ -120,6 +120,74 @@ Home Assistant **Energy / Water** dashboard.
 - [utility_meter integration](https://www.home-assistant.io/integrations/utility_meter/)
 - [input_datetime integration](https://www.home-assistant.io/integrations/input_datetime/)
 
+# Viewing PW1 environmental history (temperature / humidity / battery)
+
+The PW1 water sensor imports **authoritative hourly statistics** (mean, min, max)
+for its Air Temperature, Humidity, and Battery sensors directly from the Phyn
+cloud API. To prevent Home Assistant's recorder from overwriting this richer
+imported history with its own auto-compiled data, these three sensors deliberately
+do **not** expose a `state_class`. As a consequence, their per-entity **more-info
+popup graph shows recent live state** rather than the imported history — this is by
+design.
+
+To see the full imported history, use a **Statistics Graph card** on your dashboard:
+
+```yaml
+type: statistics-graph
+title: PW1 Environmental History
+entities:
+  - sensor.<your_pw1>_air_temperature
+  - sensor.<your_pw1>_humidity
+  - sensor.<your_pw1>_battery
+stat_types:
+  - mean
+  - min
+  - max
+period: hour
+```
+
+Replace `<your_pw1>` with your actual device entity prefix. The imported history
+is also accessible via **Developer Tools → Statistics** in the HA UI.
+
+## Optional: exclude PW1 sensors from the recorder
+
+If you want history to come **exclusively** from the Phyn API (no short-term live
+state recorded), you can exclude these entities from the recorder. The entities
+still expose a live current value for dashboard cards, templates, and automations;
+only writing to the HA `states` database table is suppressed.
+
+Add the following to your `configuration.yaml` (adjust entity IDs to match your
+device):
+
+```yaml
+recorder:
+  exclude:
+    entities:
+      - sensor.<your_pw1>_air_temperature
+      - sensor.<your_pw1>_humidity
+      - sensor.<your_pw1>_battery
+```
+
+> **Note:** after adding this exclusion, the short-term state history for these
+> sensors is gone — only the imported hourly statistics remain. Use the Statistics
+> Graph card above to view them.
+
+## One-time cleanup after upgrading
+
+If you previously ran this integration when these sensors still had a `state_class`,
+the recorder may have stored short-term states that compete with the imported history.
+Purge them with `recorder.purge_entities` in **Developer Tools → Actions**:
+
+```yaml
+action: recorder.purge_entities
+data:
+  keep_days: 0
+  entity_id:
+    - sensor.<your_pw1>_air_temperature
+    - sensor.<your_pw1>_humidity
+    - sensor.<your_pw1>_battery
+```
+
 # Known Issues
 
 * Phyn home name (in the Phyn App > Settings > Home > Address > Home Name) cannot be set to "Home" or integration configuration and setup will fail.

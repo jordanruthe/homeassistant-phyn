@@ -73,7 +73,7 @@ class PhynWaterSensorDevice(PhynDevice):
         # Store entity references so _import_history can find entity_ids after registration
         self._battery_entity = PhynBatterySensor(self, "battery", "Battery")
         self._humidity_entity = PhynHumiditySensor(self, "humidity", "Humidity")
-        self._temperature_entity = PhynTemperatureSensor(self, "air_temperature", "Air Temperature")
+        self._temperature_entity = PhynAirTemperatureSensor(self, "air_temperature", "Air Temperature")
 
         self.entities = [
             PhynAlertEvent(self),
@@ -333,12 +333,32 @@ class PhynWaterSensorDevice(PhynDevice):
         """Async setup not needed"""
         pass
 
+class PhynAirTemperatureSensor(PhynTemperatureSensor):
+    """PW1 air temperature sensor.
+
+    Long-term statistics are imported directly from the Phyn API via
+    async_import_statistics (hourly mean/min/max).  state_class is intentionally
+    omitted so the recorder never auto-compiles competing statistics from the
+    live state, which would overwrite the richer imported history.
+
+    To view historical data use a Statistics Graph card pointed at this entity
+    rather than the standard more-info popup (which shows short-term live state).
+    See README for a card example and for the optional recorder exclude.entities
+    config that removes short-term state recording entirely.
+    """
+
+    _attr_state_class = None  # type: ignore[assignment]
+
+
 class PhynBatterySensor(PhynEntity, SensorEntity):
     """Monitors the battery level."""
 
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
+    # state_class intentionally omitted: long-term stats are imported from the Phyn API
+    # via async_import_statistics (hourly mean/min/max).  If state_class were set the
+    # recorder would auto-compile statistics from the live state and overwrite imported
+    # history.  View historical data via a Statistics Graph card — see README.
 
     _device: PhynWaterSensorDevice
 

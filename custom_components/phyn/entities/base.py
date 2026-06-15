@@ -245,7 +245,11 @@ class PhynHumiditySensor(PhynEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
+    # state_class intentionally omitted (PW1 only): long-term stats are imported from
+    # the Phyn API via async_import_statistics (hourly mean/min/max).  If state_class
+    # were set the recorder would auto-compile statistics from the live state and
+    # overwrite imported history.  View historical data via a Statistics Graph card —
+    # see README.
 
     def __init__(
         self,
