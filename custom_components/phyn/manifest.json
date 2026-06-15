@@ -1,6 +1,7 @@
 {
   "domain": "phyn",
   "name": "Phyn",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@mizterb","@jordanruthe"],
   "config_flow": true,
   "documentation": "https://github.com/jordanruthe/homeassistant-phyn",
