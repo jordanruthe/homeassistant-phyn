@@ -62,10 +62,11 @@ class PhynClassicDevice(PhynDevice):
         coordinator: PhynDataUpdateCoordinator,
         home_id: str,
         device_id: str,
-        product_code: str
+        product_code: str,
+        home_name: str = "",
     ) -> None:
         """Initialize the device."""
-        super().__init__(coordinator, home_id, device_id, product_code)
+        super().__init__(coordinator, home_id, device_id, product_code, home_name)
         self._device_state: dict[str, Any] = {
             "cold_line_num": None,
             "hot_line_num": None,

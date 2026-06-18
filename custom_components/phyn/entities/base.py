@@ -63,7 +63,7 @@ class PhynEntity(Entity):
             identifiers={(PHYN_DOMAIN, self._device.id)},
             manufacturer=self._device.manufacturer,
             model=self._device.model,
-            name=self._device.device_name.capitalize(),
+            name=self._device.device_name,
             sw_version=self._device.firmware_version,
             connections={(CONNECTION_NETWORK_MAC, self._device.id)},
             serial_number=self._device.serial_number

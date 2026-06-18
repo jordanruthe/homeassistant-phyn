@@ -53,19 +53,19 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
             update_interval=update_interval,
         )
     
-    def add_device(self, home_id: str, device_id: str, product_code: str) -> None:
+    def add_device(self, home_id: str, device_id: str, product_code: str, home_name: str = "") -> None:
         """Add a device to the coordinator."""
         if product_code in ["PP1","PP2"]:
             self._devices.append(
-                PhynPlusDevice(self, home_id, device_id, product_code)
+                PhynPlusDevice(self, home_id, device_id, product_code, home_name)
             )
         elif product_code in ["PC1"]:
             self._devices.append(
-                PhynClassicDevice(self, home_id, device_id, product_code)
+                PhynClassicDevice(self, home_id, device_id, product_code, home_name)
             )
         elif product_code in ["PW1"]:
             self._devices.append(
-                PhynWaterSensorDevice(self, home_id, device_id, product_code)
+                PhynWaterSensorDevice(self, home_id, device_id, product_code, home_name)
             )
 
     @property

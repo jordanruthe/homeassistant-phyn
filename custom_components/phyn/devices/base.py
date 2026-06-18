@@ -23,11 +23,13 @@ class PhynDevice:
         coordinator: PhynDataUpdateCoordinator,
         home_id: str,
         device_id: str,
-        product_code: str
+        product_code: str,
+        home_name: str = "",
     ) -> None:
         """Initialize the Phyn device."""
         self._coordinator: PhynDataUpdateCoordinator = coordinator
         self._phyn_home_id: str = home_id
+        self._phyn_home_name: str = home_name
         self._phyn_device_id: str = device_id
         self._product_code: str = product_code
         self._manufacturer: str = "Phyn"
@@ -53,9 +55,17 @@ class PhynDevice:
         return self._coordinator
 
     @property
-    def device_name(self) -> str:
-        """Return device name."""
+    def _base_device_name(self) -> str:
+        """Return model-based device name without any home suffix."""
         return f"{self.manufacturer} {self.model}"
+
+    @property
+    def device_name(self) -> str:
+        """Return device name, suffixed with the home when multiple homes are in use."""
+        name = self._base_device_name
+        if self._phyn_home_name:
+            return f"{name} - {self._phyn_home_name}"
+        return name
 
     @property
     def firmware_has_update(self) -> bool | None:

@@ -62,13 +62,14 @@ class PhynWaterSensorDevice(PhynDevice):
         coordinator: PhynDataUpdateCoordinator,
         home_id: str,
         device_id: str,
-        product_code: str
+        product_code: str,
+        home_name: str = "",
     ) -> None:
         """Initialize the Phyn Water Sensor device."""
         self._water_statistics: dict[str, Any] = {}
         self._last_statistics_ts: int = 0
         self._pending_history_data: list[dict] | None = None
-        super().__init__(coordinator, home_id, device_id, product_code)
+        super().__init__(coordinator, home_id, device_id, product_code, home_name)
 
         # Store entity references so _import_history can find entity_ids after registration
         self._battery_entity = PhynBatterySensor(self, "battery", "Battery")
@@ -101,8 +102,8 @@ class PhynWaterSensorDevice(PhynDevice):
         return self._water_statistics.get("battery_level")
 
     @property
-    def device_name(self) -> str:
-        """Return device name."""
+    def _base_device_name(self) -> str:
+        """Return device name incorporating the app-assigned sensor name if available."""
         if "name" not in self._device_state:
             return f"{self.manufacturer} {self.model}"
         return f"{self.manufacturer} {self.model} - {self._device_state.get('name', '')}"
