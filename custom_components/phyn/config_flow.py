@@ -14,7 +14,6 @@ from .const import (
     LOGGER,
     ALL_ALERT_TYPES,
     CONF_EXCLUDED_ALERT_TYPES,
-    CONF_HOME_ID,
     CONF_DEVICE_IDS,
 )
 
@@ -52,18 +51,57 @@ def _device_label(device: dict) -> str:
     return f"{name} ({device['device_id']})" if name else device["device_id"]
 
 
+def _build_device_schema(homes: list[dict], current_device_ids: list[str] | None = None) -> vol.Schema:
+    """Build a schema with one multi_select per home.
+
+    Each field key is the home name so that HA's config flow renders it as the
+    field heading (HA falls back to the raw key when no translation entry exists).
+    If *current_device_ids* is provided the defaults are pre-populated with the
+    currently selected devices for each home (falling back to all devices in that
+    home when none are currently selected).
+    """
+    current = set(current_device_ids) if current_device_ids else set()
+    fields: dict = {}
+    for home in homes:
+        if not home.get("devices"):
+            continue
+        home_name = home.get("name", home["id"])
+        device_map = {d["device_id"]: _device_label(d) for d in home["devices"]}
+        all_ids = list(device_map.keys())
+        if current:
+            default_ids = [d for d in all_ids if d in current] or all_ids
+        else:
+            default_ids = all_ids
+        fields[vol.Optional(home_name, default=default_ids)] = cv.multi_select(device_map)
+    return vol.Schema(fields)
+
+
+def _extract_device_ids(user_input: dict, homes: list[dict]) -> list[str]:
+    """Flatten selected device IDs from per-home fields in a submitted form."""
+    selected: list[str] = []
+    seen: set[str] = set()
+    for home in homes:
+        if not home.get("devices"):
+            continue
+        home_name = home.get("name", home["id"])
+        for device_id in user_input.get(home_name, []):
+            if device_id not in seen:
+                seen.add(device_id)
+                selected.append(device_id)
+    return selected
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for phyn."""
 
     VERSION = 1
-    MINOR_VERSION = 3
+    MINOR_VERSION = 4
 
     def __init__(self) -> None:
         """Initialize flow state."""
         self._username: str | None = None
         self._password: str | None = None
-        self._homes: list[dict] | None = None
-        self._selected_home: dict | None = None
+        self._homes: list[dict] = []
 
     @staticmethod
     def async_get_options_flow(config_entry):
@@ -92,57 +130,37 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._password = user_input[CONF_PASSWORD]
                 self._homes = homes
 
-                if len(homes) == 1:
-                    self._selected_home = homes[0]
-                    return await self.async_step_device()
-                return await self.async_step_home()
+                await self.async_set_unique_id(self._username)
+                self._abort_if_unique_id_configured()
+
+                return await self.async_step_device()
 
         return self.async_show_form(
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_home(self, user_input=None):
-        """Let the user select which home to set up."""
-        errors = {}
-        if user_input is not None:
-            home_id = user_input[CONF_HOME_ID]
-            self._selected_home = next(
-                (h for h in self._homes if h["id"] == home_id), None
-            )
-            return await self.async_step_device()
-
-        home_options = {h["id"]: h.get("name", h["id"]) for h in self._homes}
-        schema = vol.Schema({vol.Required(CONF_HOME_ID): vol.In(home_options)})
-        return self.async_show_form(step_id="home", data_schema=schema, errors=errors)
-
     async def async_step_device(self, user_input=None):
-        """Let the user select which devices to import."""
+        """Select devices to monitor, grouped by home."""
         errors = {}
-        home = self._selected_home
-        device_map = {d["device_id"]: _device_label(d) for d in home.get("devices", [])}
-        all_ids = list(device_map.keys())
-
         if user_input is not None:
-            selected = user_input.get(CONF_DEVICE_IDS, [])
+            selected = _extract_device_ids(user_input, self._homes)
             if not selected:
                 errors["base"] = "no_devices_selected"
             else:
-                await self.async_set_unique_id(home["id"])
-                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=home.get("name", home["id"]),
+                    title=self._username,
                     data={
                         CONF_USERNAME: self._username,
                         CONF_PASSWORD: self._password,
-                        CONF_HOME_ID: home["id"],
                         CONF_DEVICE_IDS: selected,
                     },
                 )
 
-        schema = vol.Schema({
-            vol.Required(CONF_DEVICE_IDS, default=all_ids): cv.multi_select(device_map),
-        })
-        return self.async_show_form(step_id="device", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="device",
+            data_schema=_build_device_schema(self._homes),
+            errors=errors,
+        )
 
     async def async_step_reauth(self, entry_data):
         return await self.async_step_reauth_confirm()
@@ -179,102 +197,44 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reconfigure(self, user_input: dict[str, any] | None = None):
-        """Re-enter credentials then allow changing home + device selection."""
-        errors = {}
+    async def async_step_reconfigure(self, user_input=None):
+        """Change device selection without re-authentication.
+
+        Stored credentials are reused silently. If they are no longer valid the
+        flow redirects to reauth instead of surfacing an unactionable error.
+        """
         reconfigure_entry = self._get_reconfigure_entry()
 
-        if user_input is not None:
+        if user_input is None:
+            # First call: fetch the live device list and show the form.
+            username = reconfigure_entry.data[CONF_USERNAME]
+            password = reconfigure_entry.data[CONF_PASSWORD]
             try:
-                _, homes = await _get_api_and_homes(
-                    self.hass,
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                )
-            except ClientError as error:
-                if error.response['Error']['Code'] == "NotAuthorizedException":
-                    errors["base"] = "invalid_auth"
-                else:
-                    errors["base"] = "cannot_connect"
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            else:
-                self._username = user_input[CONF_USERNAME]
-                self._password = user_input[CONF_PASSWORD]
-                self._homes = homes
+                _, homes = await _get_api_and_homes(self.hass, username, password)
+            except (ClientError, CannotConnect):
+                return await self.async_step_reauth_confirm()
 
-                if len(homes) == 1:
-                    self._selected_home = homes[0]
-                    return await self.async_step_reconfigure_device()
-
-                # Pre-select the previously configured home
-                current_home_id = reconfigure_entry.data.get(CONF_HOME_ID)
-                home_options = {
-                    h["id"]: h.get("name", h["id"])
-                    for h in homes
-                }
-                schema = vol.Schema({
-                    vol.Required(
-                        CONF_HOME_ID,
-                        default=current_home_id if current_home_id in home_options else vol.UNDEFINED,
-                    ): vol.In(home_options),
-                })
-                return self.async_show_form(
-                    step_id="reconfigure_home", data_schema=schema, errors={}
-                )
-
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=DATA_SCHEMA,
-            errors=errors,
-        )
-
-    async def async_step_reconfigure_home(self, user_input=None):
-        """Home selection step during reconfigure (multi-home accounts)."""
-        if user_input is not None:
-            home_id = user_input[CONF_HOME_ID]
-            self._selected_home = next(
-                (h for h in self._homes if h["id"] == home_id), None
+            self._homes = homes
+            current_ids = reconfigure_entry.data.get(CONF_DEVICE_IDS, [])
+            return self.async_show_form(
+                step_id="reconfigure",
+                data_schema=_build_device_schema(self._homes, current_ids),
             )
-            return await self.async_step_reconfigure_device()
 
-        # Shouldn't reach here without homes being set; fall back gracefully.
-        return await self.async_step_reconfigure()
-
-    async def async_step_reconfigure_device(self, user_input=None):
-        """Device selection step during reconfigure."""
+        selected = _extract_device_ids(user_input, self._homes)
         errors = {}
-        reconfigure_entry = self._get_reconfigure_entry()
-        home = self._selected_home
-        device_map = {d["device_id"]: _device_label(d) for d in home.get("devices", [])}
-        all_ids = list(device_map.keys())
+        if not selected:
+            errors["base"] = "no_devices_selected"
+            current_ids = reconfigure_entry.data.get(CONF_DEVICE_IDS, [])
+            return self.async_show_form(
+                step_id="reconfigure",
+                data_schema=_build_device_schema(self._homes, current_ids),
+                errors=errors,
+            )
 
-        # Default to the previously configured devices (if still present),
-        # otherwise fall back to all devices.
-        current_device_ids = reconfigure_entry.data.get(CONF_DEVICE_IDS, all_ids)
-        current_device_ids = [d for d in current_device_ids if d in device_map] or all_ids
-
-        if user_input is not None:
-            selected = user_input.get(CONF_DEVICE_IDS, [])
-            if not selected:
-                errors["base"] = "no_devices_selected"
-            else:
-                return self.async_update_reload_and_abort(
-                    reconfigure_entry,
-                    title=home.get("name", home["id"]),
-                    data_updates={
-                        CONF_USERNAME: self._username,
-                        CONF_PASSWORD: self._password,
-                        CONF_HOME_ID: home["id"],
-                        CONF_DEVICE_IDS: selected,
-                    },
-                )
-
-        schema = vol.Schema({
-            vol.Required(CONF_DEVICE_IDS, default=current_device_ids): cv.multi_select(device_map),
-        })
-        return self.async_show_form(
-            step_id="reconfigure_device", data_schema=schema, errors=errors
+        return self.async_update_reload_and_abort(
+            reconfigure_entry,
+            data_updates={CONF_DEVICE_IDS: selected},
         )
 
 
