@@ -11,30 +11,23 @@ from homeassistant.components.recorder.statistics import (
     StatisticData,
     StatisticMeanType,
     StatisticMetaData,
-    async_import_statistics,
+    async_add_external_statistics,
 )
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
-from homeassistant.const import (
-    PERCENTAGE,
-)
-from homeassistant.util import dt as dt_util
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.util import dt as dt_util, slugify
 from asyncio import timeout
 
 from .base import PhynDevice
 from ..entities.base import (
     PhynAlertEvent,
-    PhynEntity,
     PhynAlertSensor,
     PhynFirwmwareUpdateEntity,
     PhynHumiditySensor,
     PhynTemperatureSensor,
 )
-from ..const import LOGGER
+from ..entities.pw import PhynBatterySensor
+from ..const import DOMAIN, LOGGER
 
 _DEVICE_CLASS_UNIT_CLASS: dict[SensorDeviceClass, str | None] = {
     SensorDeviceClass.TEMPERATURE: "temperature",
@@ -68,13 +61,11 @@ class PhynWaterSensorDevice(PhynDevice):
         """Initialize the Phyn Water Sensor device."""
         self._water_statistics: dict[str, Any] = {}
         self._last_statistics_ts: int = 0
-        self._pending_history_data: list[dict] | None = None
         super().__init__(coordinator, home_id, device_id, product_code, home_name)
 
-        # Store entity references so _import_history can find entity_ids after registration
         self._battery_entity = PhynBatterySensor(self, "battery", "Battery")
         self._humidity_entity = PhynHumiditySensor(self, "humidity", "Humidity")
-        self._temperature_entity = PhynAirTemperatureSensor(self, "air_temperature", "Air Temperature")
+        self._temperature_entity = PhynTemperatureSensor(self, "air_temperature", "Air Temperature")
 
         self.entities = [
             PhynAlertEvent(self),
@@ -183,17 +174,6 @@ class PhynWaterSensorDevice(PhynDevice):
 
     async def _update_device(self, *_) -> None:
         """Update the device state from the API."""
-        # Retry any import that was skipped on a prior cycle because entity_ids weren't ready
-        if self._pending_history_data is not None:
-            try:
-                if await self._import_history(self._pending_history_data):
-                    self._pending_history_data = None
-            except Exception as err:  # pylint: disable=broad-except
-                LOGGER.warning(
-                    "Failed to import pending historical statistics for %s: %s",
-                    self._phyn_device_id, err
-                )
-
         device_reading_ts = self._device_state.get("temperature", {}).get("ts", 0)
 
         if device_reading_ts and device_reading_ts <= self._last_statistics_ts:
@@ -232,8 +212,7 @@ class PhynWaterSensorDevice(PhynDevice):
             self._last_statistics_ts = newest_ts
 
         try:
-            if not await self._import_history(data):
-                self._pending_history_data = data
+            await self._import_history(data)
         except Exception as err:  # pylint: disable=broad-except
             LOGGER.warning(
                 "Failed to import historical statistics for %s: %s",
@@ -242,20 +221,24 @@ class PhynWaterSensorDevice(PhynDevice):
 
         LOGGER.debug("Phyn Water device state (%s): %s", self._phyn_device_id, self._device_state)
 
-    async def _import_history(self, data: list[dict]) -> bool:
-        """Import the full timestamped batch into HA long-term statistics.
+    async def _import_history(self, data: list[dict]) -> None:
+        """Import the full timestamped batch as external long-term statistics.
+
+        Statistics are stored under the ``phyn:`` namespace so the HA recorder
+        can also compile its own statistics from the entities' live state without
+        any conflict.
 
         Timestamp units:
           - per-reading ts  (humidity/temperature lists): SECONDS (10-digit epoch)
           - entry-level ts  (top-level battery timestamp): MILLISECONDS (13-digit epoch)
-
-        Returns True when all metrics were imported, False if any entity_id was not yet assigned.
         """
         hass = self._coordinator.hass
-        all_imported = True
+        device_slug = slugify(self._phyn_device_id)
 
         metrics = [
             (
+                "air_temperature",
+                "Air Temperature",
                 self._temperature_entity,
                 [
                     (dt_util.utc_from_timestamp(r["ts"]), float(r["value"]))
@@ -265,6 +248,8 @@ class PhynWaterSensorDevice(PhynDevice):
                 ],
             ),
             (
+                "humidity",
+                "Humidity",
                 self._humidity_entity,
                 [
                     (dt_util.utc_from_timestamp(r["ts"]), float(r["value"]))
@@ -274,6 +259,8 @@ class PhynWaterSensorDevice(PhynDevice):
                 ],
             ),
             (
+                "battery",
+                "Battery",
                 self._battery_entity,
                 [
                     (dt_util.utc_from_timestamp(entry["ts"] / 1000), float(entry["battery_level"]))
@@ -283,15 +270,7 @@ class PhynWaterSensorDevice(PhynDevice):
             ),
         ]
 
-        for entity, points in metrics:
-            if not entity.entity_id:
-                LOGGER.debug(
-                    "Skipping history import for %s on %s: entity_id not yet assigned",
-                    type(entity).__name__, self._phyn_device_id,
-                )
-                all_imported = False
-                continue
-
+        for metric_key, metric_label, entity, points in metrics:
             if not points:
                 continue
 
@@ -311,67 +290,24 @@ class PhynWaterSensorDevice(PhynDevice):
                 for hour_start, vals in sorted(hourly.items())
             ]
 
+            statistic_id = f"{DOMAIN}:{device_slug}_{metric_key}"
             metadata = StatisticMetaData(
                 has_mean=True,
                 has_sum=False,
                 mean_type=StatisticMeanType.ARITHMETIC,
-                name=None,
-                source="recorder",
-                statistic_id=entity.entity_id,
+                name=f"{self.device_name} {metric_label}",
+                source=DOMAIN,
+                statistic_id=statistic_id,
                 unit_of_measurement=entity.native_unit_of_measurement,
                 unit_class=_DEVICE_CLASS_UNIT_CLASS.get(entity.device_class),
             )
 
-            async_import_statistics(hass, metadata, stat_data)
+            async_add_external_statistics(hass, metadata, stat_data)
             LOGGER.debug(
                 "Imported %d hourly statistics buckets for %s (%s)",
-                len(stat_data), entity.entity_id, self._phyn_device_id,
+                len(stat_data), statistic_id, self._phyn_device_id,
             )
-
-        return all_imported
 
     async def async_setup(self) -> None:
         """Async setup not needed"""
         pass
-
-class PhynAirTemperatureSensor(PhynTemperatureSensor):
-    """PW1 air temperature sensor.
-
-    Long-term statistics are imported directly from the Phyn API via
-    async_import_statistics (hourly mean/min/max).  state_class is intentionally
-    omitted so the recorder never auto-compiles competing statistics from the
-    live state, which would overwrite the richer imported history.
-
-    To view historical data use a Statistics Graph card pointed at this entity
-    rather than the standard more-info popup (which shows short-term live state).
-    See README for a card example and for the optional recorder exclude.entities
-    config that removes short-term state recording entirely.
-    """
-
-    _attr_state_class = None  # type: ignore[assignment]
-
-
-class PhynBatterySensor(PhynEntity, SensorEntity):
-    """Monitors the battery level."""
-
-    _attr_device_class = SensorDeviceClass.BATTERY
-    _attr_native_unit_of_measurement = PERCENTAGE
-    # state_class intentionally omitted: long-term stats are imported from the Phyn API
-    # via async_import_statistics (hourly mean/min/max).  If state_class were set the
-    # recorder would auto-compile statistics from the live state and overwrite imported
-    # history.  View historical data via a Statistics Graph card — see README.
-
-    _device: PhynWaterSensorDevice
-
-    def __init__(self, device: PhynWaterSensorDevice, name: str, readable_name: str) -> None:
-        """Initialize the battery sensor."""
-        super().__init__(name, readable_name, device)
-        self._state: float | None = None
-        self._device_property: str = "battery"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current battery."""
-        if not hasattr(self._device, self._device_property) or self._device.battery is None:
-            return None
-        return round(self._device.battery, 1)
