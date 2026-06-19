@@ -11,5 +11,5 @@
   "requirements": [
     "aiophyn>=2026.6.4"
   ],
-  "version": "2026.6.2"
+  "version": "2026.6.3b1"
 }
