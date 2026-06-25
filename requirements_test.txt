@@ -1,5 +1,6 @@
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
-pytest-homeassistant-custom-component<=0.13.109
+pytest-homeassistant-custom-component>=0.13.316
 pytest-cov>=4.1.0
-aiophyn>=2025.10.1
+aiophyn>=2026.6.4
+PySocks>=1.7.1

@@ -198,7 +198,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Ensure MQTT is disconnected on any setup failure to avoid leaking
         # open connections across repeated failed setups.
         try:
-            await client.mqtt.disconnect_and_wait()
+            await asyncio.wait_for(client.mqtt.disconnect_and_wait(), timeout=15)
         except Exception as err:
             _LOGGER.debug("Error disconnecting MQTT after setup failure: %s", err)
         raise
@@ -209,7 +209,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if CLIENT not in hass.data.get(DOMAIN, {}):
         return True
     client = hass.data[DOMAIN][CLIENT]
-    await client.mqtt.disconnect_and_wait()
+    try:
+        await asyncio.wait_for(client.mqtt.disconnect_and_wait(), timeout=15)
+    except TimeoutError:
+        _LOGGER.warning(
+            "Timed out waiting for MQTT disconnect during unload; proceeding anyway"
+        )
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         del hass.data[DOMAIN][CLIENT]

@@ -5,6 +5,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 MQTT_DOWN_RELOAD_THRESHOLD = 10
+STATE_FETCH_FAILURE_THRESHOLD = 3  # ~3 min at 60s polls before surfacing UpdateFailed
 
 from aiophyn.api import API
 from aiophyn.errors import AuthenticationError, RequestError
@@ -45,6 +46,7 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
         self._alert_initial_fetch_done: bool = False
         self._mqtt_down_cycles: int = 0
         self._reload_in_progress: bool = False
+        self._state_fetch_failures: int = 0
 
         super().__init__(
             hass,
@@ -116,6 +118,7 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
 
         self._alert_initial_fetch_done = True
 
+        last_state_error: RequestError | None = None
         for device in self._devices:
             try:
                 async with timeout(20):
@@ -125,34 +128,88 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
                     translation_domain="phyn",
                     translation_key="auth_failed",
                 ) from error
-            except (RequestError) as error:
-                raise UpdateFailed(error) from error
+            except RequestError as error:
+                last_state_error = error
+                break
 
-        # As a last-resort, reload the config entry to rebuild the MQTT client from 
-        # scratch. 
+        if last_state_error is not None:
+            self._state_fetch_failures += 1
+            if self._state_fetch_failures >= STATE_FETCH_FAILURE_THRESHOLD:
+                raise UpdateFailed(last_state_error) from last_state_error
+            LOGGER.warning(
+                "Transient error fetching Phyn device state (%s/%s): %s",
+                self._state_fetch_failures,
+                STATE_FETCH_FAILURE_THRESHOLD,
+                last_state_error,
+            )
+            return
+
+        self._state_fetch_failures = 0
+
+        # As a last-resort, reload the config entry to rebuild the MQTT client from
+        # scratch.
         # The threshold is intentionally high (~10 min at 60s intervals) because the
         # reconnect loop should recover on its own well before this fires.
         mqtt = self.api_client.mqtt
         if mqtt.topics and not mqtt.is_connected():
             self._mqtt_down_cycles += 1
+
+            # Snapshot aiophyn reconnect state-machine internals for diagnostics.
+            # Read defensively (getattr) since these are private aiophyn attributes.
+            connect_task = getattr(mqtt, "connect_task", None)
+            reconnect_evt = getattr(mqtt, "reconnect_evt", None)
+            disconnect_evt = getattr(mqtt, "disconnect_evt", None)
+            task_state = (
+                "none" if connect_task is None
+                else "done" if connect_task.done()
+                else "cancelled" if connect_task.cancelled()
+                else "running"
+            )
             LOGGER.warning(
-                "Phyn MQTT disconnected while API is reachable (%s/%s cycles)",
+                "Phyn MQTT disconnected while API is reachable (%s/%s cycles) — "
+                "topics=%s task=%s reconnect_evt=%s disconnect_evt=%s pending_acks=%s",
                 self._mqtt_down_cycles,
                 MQTT_DOWN_RELOAD_THRESHOLD,
+                len(getattr(mqtt, "topics", [])),
+                task_state,
+                reconnect_evt.is_set() if reconnect_evt is not None else "n/a",
+                disconnect_evt is not None,
+                len(getattr(mqtt, "pending_acks", {})),
             )
             if (
                 self._mqtt_down_cycles >= MQTT_DOWN_RELOAD_THRESHOLD
                 and not self._reload_in_progress
             ):
                 self._reload_in_progress = True
+                # Reset the cycle counter now so that if this reload attempt fails
+                # the watchdog backs off a full threshold before retrying, instead
+                # of staying stuck at ≥ threshold forever.
+                self._mqtt_down_cycles = 0
                 LOGGER.warning(
                     "Reloading Phyn integration to recover MQTT connection"
                 )
-                self.hass.async_create_task(
+                reload_task = self.hass.async_create_task(
                     self.hass.config_entries.async_reload(
                         self.config_entry.entry_id
                     )
                 )
+
+                def _on_reload_done(task: Any) -> None:
+                    """Clear the reload flag so a future threshold can retry."""
+                    self._reload_in_progress = False
+                    exc = None
+                    try:
+                        exc = task.exception()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    if exc is not None:
+                        LOGGER.warning(
+                            "Phyn integration reload failed: %s — will retry after %s cycles",
+                            exc,
+                            MQTT_DOWN_RELOAD_THRESHOLD,
+                        )
+
+                reload_task.add_done_callback(_on_reload_done)
         else:
             self._mqtt_down_cycles = 0
     
