@@ -215,6 +215,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.warning(
             "Timed out waiting for MQTT disconnect during unload; proceeding anyway"
         )
+        # A timed-out disconnect can leave aiophyn's reconnect loop running
+        # in the background (this is what we were trying to interrupt in
+        # the first place — MQTT-down-triggered reloads call unload while
+        # already disconnected). Stop it directly so it can't keep the
+        # entry's underlying connection alive/retrying past this unload,
+        # which has been observed to make the platform unload below fail
+        # and leave the config entry stuck in a failed_unload state.
+        connect_task = getattr(client.mqtt, "connect_task", None)
+        if connect_task is not None and not connect_task.done():
+            connect_task.cancel()
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         del hass.data[DOMAIN][CLIENT]
