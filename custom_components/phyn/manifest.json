@@ -10,7 +10,7 @@
   "loggers": ["custom_components.phyn","aiophyn"],
   "homeassistant": "2026.6.4",
   "requirements": [
-    "aiophyn>=2026.6.4"
+    "aiophyn>=2026.9.1"
   ],
-  "version": "2026.8.1"
+  "version": "2026.9.1"
 }

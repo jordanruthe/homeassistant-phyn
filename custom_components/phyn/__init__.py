@@ -25,6 +25,19 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.EVENT, Platform.SENSOR, Platform.SWITCH, Platform.UPDATE, Platform.VALVE]
 
+# aiophyn bounds disconnect_and_wait() itself (10s); this is a backstop only.
+MQTT_DISCONNECT_TIMEOUT = 15
+
+
+async def _async_disconnect_mqtt(client) -> None:
+    """Tear down the MQTT client, never raising and never hanging."""
+    try:
+        await asyncio.wait_for(client.mqtt.disconnect_and_wait(), timeout=MQTT_DISCONNECT_TIMEOUT)
+    except TimeoutError:
+        _LOGGER.warning("Timed out waiting for MQTT disconnect; proceeding anyway")
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Error disconnecting MQTT: %s", err)
+
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate old entry to the current schema version."""
@@ -197,10 +210,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception:
         # Ensure MQTT is disconnected on any setup failure to avoid leaking
         # open connections across repeated failed setups.
-        try:
-            await asyncio.wait_for(client.mqtt.disconnect_and_wait(), timeout=15)
-        except Exception as err:
-            _LOGGER.debug("Error disconnecting MQTT after setup failure: %s", err)
+        await _async_disconnect_mqtt(client)
         raise
 
 
@@ -209,12 +219,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if CLIENT not in hass.data.get(DOMAIN, {}):
         return True
     client = hass.data[DOMAIN][CLIENT]
-    try:
-        await asyncio.wait_for(client.mqtt.disconnect_and_wait(), timeout=15)
-    except TimeoutError:
-        _LOGGER.warning(
-            "Timed out waiting for MQTT disconnect during unload; proceeding anyway"
-        )
+    await _async_disconnect_mqtt(client)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         del hass.data[DOMAIN][CLIENT]

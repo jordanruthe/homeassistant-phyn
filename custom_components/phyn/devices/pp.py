@@ -133,7 +133,9 @@ class PhynPlusDevice(PhynDevice):
     def consumption(self) -> float | None:
         """Return the lifetime meter reading in gallons."""
         value = self._device_state.get("consumption")
-        # The realtime feed sends a scalar; the REST state sends {"v": …, "ts": …}.
+        # REST get_state() stores {"v": ..., "ts": ...}; on_device_update stores
+        # a floored scalar. Accept both so a realtime message that lacks
+        # "consumption" cannot drop the sensor to unknown.
         if isinstance(value, dict):
             value = value.get("v")
         if value is None:
