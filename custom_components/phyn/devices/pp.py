@@ -131,10 +131,14 @@ class PhynPlusDevice(PhynDevice):
 
     @property
     def consumption(self) -> float | None:
-        """Return the current consumption for today in gallons."""
-        if "consumption" not in self._rt_device_state:
+        """Return the lifetime meter reading in gallons."""
+        value = self._device_state.get("consumption")
+        # The realtime feed sends a scalar; the REST state sends {"v": …, "ts": …}.
+        if isinstance(value, dict):
+            value = value.get("v")
+        if value is None:
             return None
-        return self._device_state.get("consumption")
+        return math.floor(value * 100) / 100
 
     @property
     def consumption_today(self) -> float | None:
