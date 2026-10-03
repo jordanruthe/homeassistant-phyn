@@ -361,6 +361,23 @@ class PhynPlusDevice(PhynDevice):
                 self._device_state.update(state_data)
                 self._device_state['last_updated'] = math.floor(time.time())
                 self._update_last_known_valve_state()
+            elif self._device_state.get("online_status", {}).get("v", "online") != "online":
+                # MQTT is delivering, so the full REST fetch above is skipped --
+                # but online_status (which drives entity availability) comes
+                # only from REST.  If the last REST read caught the device
+                # between cloud sessions, "offline" would otherwise stick for
+                # as long as MQTT keeps flowing, and every entity would stay
+                # unavailable.  Re-read online_status alone: the REST telemetry
+                # can be hours old and must not overwrite live MQTT values.
+                try:
+                    state_data = await self._coordinator.api_client.device.get_state(
+                        self._phyn_device_id
+                    )
+                except RequestError as err:
+                    LOGGER.debug("Could not re-check online status: %s", err)
+                    return
+                if "online_status" in state_data:
+                    self._device_state["online_status"] = state_data["online_status"]
 
     async def on_device_update(self, device_id, data):
         if device_id == self._phyn_device_id:
