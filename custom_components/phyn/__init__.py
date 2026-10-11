@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import instance_id
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
@@ -128,7 +129,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN] = {}
-    client_id = f"homeassistant-{hass.data['core.uuid']}-{entry.entry_id}"
+    client_id = f"homeassistant-{await instance_id.async_get(hass)}-{entry.entry_id}"
     try:
         hass.data[DOMAIN][CLIENT] = client = await async_get_api(
             entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD],
