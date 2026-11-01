@@ -4,6 +4,11 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+# Down-cycles (60s each) before asking aiophyn to reconnect the MQTT client
+# in place. Cheap: no entity churn, just a fresh connection + re-subscribe.
+MQTT_DOWN_RECONNECT_THRESHOLD = 2
+# Down-cycles before falling back to a full config-entry reload. Entities go
+# briefly unavailable during a reload, so this is a last resort.
 MQTT_DOWN_RELOAD_THRESHOLD = 10
 STATE_FETCH_FAILURE_THRESHOLD = 3  # ~3 min at 60s polls before surfacing UpdateFailed
 
@@ -146,10 +151,12 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
 
         self._state_fetch_failures = 0
 
-        # As a last-resort, reload the config entry to rebuild the MQTT client from
-        # scratch.
-        # The threshold is intentionally high (~10 min at 60s intervals) because the
-        # reconnect loop should recover on its own well before this fires.
+        # MQTT watchdog, two tiers:
+        #  1. After MQTT_DOWN_RECONNECT_THRESHOLD cycles, ask aiophyn to reconnect
+        #     in place (aiophyn >= 2026.10.1 exposes ensure_connected()).
+        #  2. After MQTT_DOWN_RELOAD_THRESHOLD cycles (~10 min), reload the config
+        #     entry to rebuild the client from scratch.
+        # aiophyn's own reconnect loop should recover well before either fires.
         mqtt = self.api_client.mqtt
         if mqtt.topics and not mqtt.is_connected():
             self._mqtt_down_cycles += 1
@@ -176,6 +183,17 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
                 disconnect_evt is not None,
                 len(getattr(mqtt, "pending_acks", {})),
             )
+            ensure_connected = getattr(mqtt, "ensure_connected", None)
+            if (
+                self._mqtt_down_cycles == MQTT_DOWN_RECONNECT_THRESHOLD
+                and callable(ensure_connected)
+            ):
+                LOGGER.warning("Asking aiophyn to reconnect MQTT before resorting to a reload")
+                try:
+                    ensure_connected()
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning("MQTT reconnect request failed: %s", err)
+
             if (
                 self._mqtt_down_cycles >= MQTT_DOWN_RELOAD_THRESHOLD
                 and not self._reload_in_progress

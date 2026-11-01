@@ -52,6 +52,7 @@ class PhynEntity(Entity):
         **kwargs: Any,
     ) -> None:
         """Init Phyn entity."""
+        self._attr_translation_key: str = entity_type
         self._attr_name: str = name
         self._attr_unique_id: str = f"{device.id}_{entity_type}"
         self._device: PhynDevice = device
