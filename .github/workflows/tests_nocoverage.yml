@@ -25,7 +25,7 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
-          ignore: "topics"
+          ignore: "topics brands"
   
   # Ensure translations/en.json stays in sync with strings.json
   translations:
