@@ -20,7 +20,7 @@ async def phyn_leak_test(service: ServiceCall):
     device = device_registry.async_get(valve.device_id)
     
     device_id = None
-    extended_test = "true" if "extended" in service.data and service.data['extended'] else "false"
+    extended_test = bool(service.data.get("extended", False))
     for x in device.identifiers:
         if x[0] == "phyn":
             device_id = x[1]
